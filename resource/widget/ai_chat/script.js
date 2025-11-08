@@ -1019,11 +1019,68 @@ function truncateFromMessage(messageIndex, historyIndex) {
     resolve();
   });
 }
-function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete) {
+function updateAIBubbleMaxWidth() {
+  const chatBody = document.querySelector('body');
+  if (!chatBody) {
+    return;
+  }
+  const maxWidth = chatBody.clientWidth;
+  let styleTag = document.getElementById('dynamic-ai-bubble-style');
+  if (!styleTag) {
+    styleTag = document.createElement('style');
+    styleTag.id = 'dynamic-ai-bubble-style';
+    document.head.appendChild(styleTag);
+  }
+  styleTag.innerHTML = `
+      .message-group.ai {
+        max-width: ${maxWidth}px;
+      }
+      .message-content {
+        box-sizing: border-box;
+      }
+    `;
+}
+function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete, isRetryForDuplicate = false) {
   const cancelButtonContainer = document.getElementById('cancel-button-container');
   const cancelButton = cancelButtonContainer.querySelector('.cancel-button');
   const sendButton = document.querySelector('.send-button');
   return async (fullContent) => {
+    const lastAssistantMessage = [...window.messagesHistory].reverse().find((item) => item.messages.role === 'assistant');
+    if (lastAssistantMessage && lastAssistantMessage.messages.content === fullContent) {
+      if (isRetryForDuplicate) {
+        const errorMessage = `❌ **AI响应重复**\n\n已尝试压缩上下文并重试,但AI仍然返回了重复的内容。\n\n**建议:**\n- 请尝试修改您的问题或开启新对话`;
+        aiBubble.setHTML(errorMessage);
+        if (onComplete) {
+          onComplete();
+        }
+        return;
+      } else {
+        aiBubble.element.remove();
+        let obj = await compressContext(aiChatApiOptionsBody, window.messagesHistory);
+        if (obj) {
+          aiChatApiOptionsBody = obj.aiChatApiOptionsBody;
+          window.messagesHistory = obj.messagesHistory;
+        }
+        const newAiBubble = chat.addAIBubble(aiMessageIndex, aiHistoryIndex);
+        newAiBubble.updateStream('');
+        newAiBubble.startDuration();
+        const newController = new AbortController();
+        const newAbortHandler = () => {
+          cancelButtonContainer.style.display = 'none';
+          newController.abort();
+        };
+        cancelButton.addEventListener('click', newAbortHandler);
+        const newOnComplete = () => {
+          cancelButton.removeEventListener('click', newAbortHandler);
+          if (onComplete) {
+            onComplete();
+          }
+        };
+        const newResponseHandler = createAIResponseHandler(newAiBubble, aiMessageIndex, aiHistoryIndex, newController, newOnComplete, true);
+        requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newResponseHandler, newController.signal, newAiBubble);
+        return;
+      }
+    }
     aiBubble.finishDuration();
     await updateTokenUsage();
     aiBubble.finishStream();
@@ -1147,7 +1204,7 @@ function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, contr
               const newAiBubble = chat.addAIBubble(newAiMessageIndex, newAiHistoryIndex);
               newAiBubble.updateStream('');
               newAiBubble.startDuration();
-              const newHandler = createAIResponseHandler(newAiBubble, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete);
+              const newHandler = createAIResponseHandler(newAiBubble, newAiMessageIndex, newAiHistoryIndex, newController, newOnComplete, false);
               cancelButtonContainer.style.display = 'flex';
               requestAiChat(newAiBubble.updateStream.bind(newAiBubble), newHandler, newController.signal, newAiBubble);
               return;
@@ -1217,7 +1274,7 @@ function retryAIMessage(bubbleElement) {
         chat.chatController.scrollToBottom();
       }
     };
-    const responseHandler = createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete);
+    const responseHandler = createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete, false);
     requestAiChat(aiBubble.updateStream.bind(aiBubble), responseHandler, controller.signal, aiBubble);
     resolve();
   });
@@ -1711,7 +1768,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         updateTokenUsage();
       };
-      const onDone = createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete);
+      const onDone = createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, controller, onComplete, false);
       requestAiChat(aiBubble.updateStream.bind(aiBubble), onDone, controller.signal, aiBubble);
       messageInput.value = '';
       updateHighlights();
@@ -2013,30 +2070,40 @@ document.addEventListener('DOMContentLoaded', function () {
     await initializeSystemMessage();
     initializeHistoryPanel(backend);
   });
-  function updateAIBubbleMaxWidth() {
-    const chatBody = document.querySelector('.chat-body');
-    if (!chatBody) {
-      return;
-    }
-    const maxWidth = chatBody.clientWidth;
-    let styleTag = document.getElementById('dynamic-ai-bubble-style');
-    if (!styleTag) {
-      styleTag = document.createElement('style');
-      styleTag.id = 'dynamic-ai-bubble-style';
-      document.head.appendChild(styleTag);
-    }
-    styleTag.innerHTML = `
-      .message-group.ai {
-        max-width: ${maxWidth}px;
-      }
-      .message-content {
-        box-sizing: border-box;
-      }
-    `;
-  }
   updateAIBubbleMaxWidth();
   window.addEventListener('resize', updateAIBubbleMaxWidth);
   setupWebSocket();
+  const tokenUsageElement = document.getElementById('token-usage');
+  const compressionConfirmOverlay = document.getElementById('compression-confirm-overlay');
+  const confirmYesButton = compressionConfirmOverlay.querySelector('.confirm-yes');
+  const confirmNoButton = compressionConfirmOverlay.querySelector('.confirm-no');
+  tokenUsageElement.addEventListener('click', () => {
+    const messageCount = aiChatApiOptionsBody.messages.filter((m) => m.role !== 'system').length;
+    if (messageCount < 3) {
+      return;
+    }
+    compressionConfirmOverlay.style.display = 'flex';
+  });
+  confirmNoButton.addEventListener('click', () => {
+    compressionConfirmOverlay.style.display = 'none';
+  });
+  confirmYesButton.addEventListener('click', async () => {
+    compressionConfirmOverlay.style.display = 'none';
+    try {
+      const result = await compressContext(aiChatApiOptionsBody, window.messagesHistory);
+      if (result) {
+        aiChatApiOptionsBody = result.aiChatApiOptionsBody;
+        window.messagesHistory = result.messagesHistory;
+        await saveHistory(window.firstUserMessage, window.messagesHistory);
+        await updateTokenUsage();
+      }
+    } catch (error) {}
+  });
+  compressionConfirmOverlay.addEventListener('click', (e) => {
+    if (e.target === compressionConfirmOverlay) {
+      compressionConfirmOverlay.style.display = 'none';
+    }
+  });
 });
 function setupWebSocket() {
   const onlineStatusElement = document.getElementById('online-status');
