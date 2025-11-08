@@ -728,7 +728,8 @@ class AIBridge(QObject):
                 for tool_name, tool_info in tools.items():
                     prompt += f"- {tool_name}\n"
                     prompt += f"      {tool_info['description']}\n\n"
-                    prompt += "      输入模式:\n"
+                    input_format = tool_info.get('input_format', 'String')
+                    prompt += f"      输入模式 [{input_format}]\n"
                     schema_str = tool_info['schema']
                     prompt += f"{schema_str}\n\n"
             return prompt
