@@ -11,13 +11,14 @@ function generateUniqueId() {
 async function callBackend(backendObject, methodName, args = null) {
   return new Promise((resolve, reject) => {
     const requestId = generateUniqueId();
-    const handler = (receivedId, resultJson) => {
+    const handler = async (receivedId, resultJson) => {
       if (receivedId === requestId) {
         cleanup();
         try {
           const result = JSON.parse(resultJson);
           if (result.status === 'error') {
-            reject(new Error(result.content));
+            console.error(result);
+            resolve(await callBackend(backendObject, methodName, args));
           } else {
             resolve(result);
           }
@@ -1158,7 +1159,10 @@ function createAIResponseHandler(aiBubble, aiMessageIndex, aiHistoryIndex, contr
             }
             sendButton.disabled = true;
             try {
-              const executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
+              let executionResultStr = await executeMcpTool(toolCall.server_name, toolCall.tool_name, JSON.stringify(toolCall.arguments), toolRequestId);
+              if (toolCall.tool_name === 'exe_shell') {
+                executionResultStr = compressTerminalOutput(executionResultStr);
+              }
               try {
                 const executionResult = JSON.parse(executionResultStr);
                 if (executionResult.action === 'provideListOptions' && executionResult.options) {
