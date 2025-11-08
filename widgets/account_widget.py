@@ -1,14 +1,388 @@
 import os
 import random
-from PyQt5.QtCore import Qt, QTimer, QUrl
-from PyQt5.QtGui import QFont, QPixmap, QPainter, QColor
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout
+from PyQt5.QtCore import Qt, QTimer, QUrl, pyqtSignal, QByteArray
+from PyQt5.QtGui import QFont, QPixmap, QPainter, QColor, QPixmap, QImage
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel
 from qfluentwidgets import (
-    CardWidget, SimpleCardWidget, AvatarWidget, TitleLabel, CaptionLabel,
-    StrongBodyLabel, BodyLabel, PillPushButton, PrimaryPushButton,
-    ProgressRing, InfoBar, InfoBarPosition
+    CardWidget, SimpleCardWidget, TitleLabel, CaptionLabel,
+    StrongBodyLabel, BodyLabel, PillPushButton, MessageBoxBase,  LineEdit, PasswordLineEdit,
+    ProgressRing, InfoBar, InfoBarPosition, PushButton
 )
+from pathlib import Path
+from tools.font_config import font_config
+from widgets.AvatarPicker import AvatarPickerWidget
 from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest
+from tools.setting_config import SCM
+import base64
+import json
+font_ = font_config()
+configer = SCM()
+
+LOGIN_URL = "http://localhost:5678/login"
+REGISTER_URL = "http://localhost:5678/register"
+
+
+def set_font_recursive(widget: QWidget, font):
+    if font is None:
+        return
+    widget.setFont(font)
+    for child in widget.findChildren(QWidget):
+        child.setFont(font)
+
+
+class login_register_Dialog(MessageBoxBase):
+    yesButtonClicked = pyqtSignal()
+    cancelButtonClicked = pyqtSignal()
+
+    def __init__(self, parent=None, login=True, username="", avatar_url="", qid="", email=""):
+        super().__init__(parent)
+
+        self.is_login_mode = login
+        type_str = self.tr("Login") if login else self.tr("Register")
+
+        self.yesButton.setText(type_str)
+        self.cancelButton.setText(self.tr("Cancel"))
+
+        # 移除原有的按钮连接，我们将完全重写事件处理
+        try:
+            self.yesButton.clicked.disconnect()
+            self.cancelButton.clicked.disconnect()
+        except:
+            pass  # 如果之前没有连接，忽略错误
+
+        # 重新连接按钮
+        self.yesButton.clicked.connect(self._on_yes_clicked)
+        self.cancelButton.clicked.connect(self._on_cancel_clicked)
+
+        # 错误提示标签
+        self.error_label = CaptionLabel("")
+        self.error_label.setVisible(False)
+        self.error_label.setStyleSheet("color: red; padding: 5px;")
+
+        username_layout = QVBoxLayout()
+        username_label_text = self.tr(
+            "Username or Email") if login else self.tr("Username")
+        self.username_label = QLabel(username_label_text)
+        username_layout.addWidget(self.username_label)
+        self.username_edit = LineEdit()
+        self.username_edit.setText(username.replace(" (Local)", ""))
+        self.username_edit.textChanged.connect(self._clear_error)
+        username_layout.addWidget(self.username_edit)
+
+        # 用户名错误提示
+        self.username_error = CaptionLabel("")
+        self.username_error.setVisible(False)
+        self.username_error.setStyleSheet(
+            "color: red; font-size: 11px; padding-left: 5px;")
+        username_layout.addWidget(self.username_error)
+
+        password_layout = QVBoxLayout()
+        password_layout.addWidget(QLabel(self.tr("Password:")))
+        self.password_edit = PasswordLineEdit()
+        self.password_edit.textChanged.connect(self._clear_error)
+        password_layout.addWidget(self.password_edit)
+
+        # 密码错误提示
+        self.password_error = CaptionLabel("")
+        self.password_error.setVisible(False)
+        self.password_error.setStyleSheet(
+            "color: red; font-size: 11px; padding-left: 5px;")
+        password_layout.addWidget(self.password_error)
+
+        qid_layout = QVBoxLayout()
+        self.qid_label = QLabel(self.tr("QID (Optional):"))
+        qid_layout.addWidget(self.qid_label)
+        self.qid_edit = LineEdit()
+        self.qid_edit.setText(qid)
+        qid_layout.addWidget(self.qid_edit)
+
+        email_layout = QVBoxLayout()
+        self.email_label = QLabel(self.tr("Email:"))
+        email_layout.addWidget(self.email_label)
+        self.email_edit = LineEdit()
+        self.email_edit.setText(email)
+        self.email_edit.textChanged.connect(self._clear_error)
+        email_layout.addWidget(self.email_edit)
+
+        # 邮箱错误提示
+        self.email_error = CaptionLabel("")
+        self.email_error.setVisible(False)
+        self.email_error.setStyleSheet(
+            "color: red; font-size: 11px; padding-left: 5px;")
+        email_layout.addWidget(self.email_error)
+
+        self.avatar = AvatarPickerWidget(size=90)
+
+        self.modeButton = PushButton(self.get_mode_button_text())
+        self.modeButton.clicked.connect(self.toggle_mode)
+
+        avatar_button_layout = QHBoxLayout()
+        avatar_button_layout.addWidget(self.avatar)
+        avatar_button_layout.addStretch()
+        avatar_button_layout.addWidget(self.modeButton)
+
+        # 主布局
+        self.viewLayout.addWidget(self.error_label)
+        self.viewLayout.addSpacing(10)
+        self.viewLayout.addLayout(username_layout)
+        self.viewLayout.addLayout(password_layout)
+        if not login:
+            self.viewLayout.addLayout(qid_layout)
+            self.viewLayout.addLayout(email_layout)
+            self.viewLayout.addLayout(avatar_button_layout)
+
+        self.viewLayout.addStretch()
+
+        set_font_recursive(self, font_.get_font())
+
+        self.network_manager = QNetworkAccessManager()
+        self.network_manager.finished.connect(self.on_avatar_downloaded)
+
+        self.set_avatar(avatar_url)
+
+    def save_avatar(self):
+        """保存头像到指定目录"""
+        username = self.username_edit.text().strip()
+        if not username:
+            print("Username is required to save the avatar.")
+            return
+
+        # 获取保存路径（~/.config/pyqt-ssh/avatar_<username>.png）
+        config_dir = Path.home() / ".config" / "pyqt-ssh"
+        config_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（如果不存在的话）
+        avatar_path = config_dir / f"avatar_{username}.png"
+
+        # 获取当前头像图像
+        pixmap = self.avatar.pixmap()
+        if pixmap.isNull():
+            print("No avatar to save.")
+            return
+
+        # 将 QPixmap 转换为 QImage
+        image = pixmap.toImage()
+
+        # 保存 QImage 为 PNG 文件
+        if not image.save(str(avatar_path), "PNG"):
+            print(f"Failed to save avatar to {avatar_path}")
+        else:
+            print(f"Avatar saved to {avatar_path}")
+        self.avatar_path = avatar_path
+
+    def _on_yes_clicked(self):
+        """处理确认按钮点击"""
+        if self._validate_required_fields():
+            # 验证通过，发射信号并关闭对话框
+            self.yesButtonClicked.emit()
+            self.save_avatar()
+            self.accept()
+        else:
+            # 验证失败，不关闭对话框，只显示错误
+            pass
+
+    def _on_cancel_clicked(self):
+        """处理取消按钮点击"""
+        self.cancelButtonClicked.emit()
+        self.reject()
+
+    def get_mode_button_text(self):
+        if self.is_login_mode:
+            return self.tr("Switch to Register")
+        else:
+            return self.tr("Switch to Login")
+
+    def toggle_mode(self):
+        self.is_login_mode = not self.is_login_mode
+
+        type_str = self.tr(
+            "Login") if self.is_login_mode else self.tr("Register")
+        self.yesButton.setText(type_str)
+        self.modeButton.setText(self.get_mode_button_text())
+
+        if self.is_login_mode:
+            self.username_label.setText(self.tr("Username or Email"))
+            self.qid_label.setVisible(False)
+            self.qid_edit.setVisible(False)
+            self.email_label.setVisible(False)
+            self.email_edit.setVisible(False)
+            self.avatar.setVisible(False)
+            # 隐藏邮箱错误提示
+            self.email_error.setVisible(False)
+        else:
+            self.username_label.setText(self.tr("Username"))
+            self.qid_label.setVisible(True)
+            self.qid_edit.setVisible(True)
+            self.email_label.setVisible(True)
+            self.email_edit.setVisible(True)
+            self.avatar.setVisible(True)
+
+        # 切换模式时清空所有错误
+        self._clear_all_errors()
+
+    def _validate_required_fields(self):
+        """验证必填字段"""
+        username = self.username_edit.text().strip()
+        password = self.password_edit.text().strip()
+
+        has_error = False
+
+        # 清空之前的错误
+        self._clear_all_errors()
+
+        # 登录模式验证
+        if self.is_login_mode:
+            if not username:
+                self._show_field_error(self.username_error, self.tr(
+                    "Username or email is required"))
+                has_error = True
+            if not password:
+                self._show_field_error(
+                    self.password_error, self.tr("Password is required"))
+                has_error = True
+
+        # 注册模式验证
+        else:
+            if not username:
+                self._show_field_error(
+                    self.username_error, self.tr("Username is required"))
+                has_error = True
+            elif len(username) < 3:
+                self._show_field_error(self.username_error, self.tr(
+                    "Username must be at least 3 characters"))
+                has_error = True
+
+            if not password:
+                self._show_field_error(
+                    self.password_error, self.tr("Password is required"))
+                has_error = True
+            elif len(password) < 6:
+                self._show_field_error(self.password_error, self.tr(
+                    "Password must be at least 6 characters"))
+                has_error = True
+
+            email = self.email_edit.text().strip()
+            if not email:
+                self._show_field_error(
+                    self.email_error, self.tr("Email is required"))
+                has_error = True
+            elif not self._is_valid_email(email):
+                self._show_field_error(self.email_error, self.tr(
+                    "Please enter a valid email address"))
+                has_error = True
+
+        if has_error:
+            self.error_label.setText(self.tr("Please fix the errors below"))
+            self.error_label.setVisible(True)
+
+            # 如果有错误，将焦点设置到第一个错误的字段
+            if self.is_login_mode:
+                if not username:
+                    self.username_edit.setFocus()
+                elif not password:
+                    self.password_edit.setFocus()
+            else:
+                if not username:
+                    self.username_edit.setFocus()
+                elif not password:
+                    self.password_edit.setFocus()
+                elif not email or not self._is_valid_email(email):
+                    self.email_edit.setFocus()
+
+            return False
+
+        return True
+
+    def _is_valid_email(self, email):
+        """简单的邮箱格式验证"""
+        import re
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(pattern, email) is not None
+
+    def _show_field_error(self, error_label, message):
+        """显示字段错误提示"""
+        error_label.setText(f"• {message}")
+        error_label.setVisible(True)
+
+    def _clear_error(self):
+        """输入内容时清除错误状态"""
+        sender = self.sender()
+        if sender == self.username_edit:
+            self.username_error.setVisible(False)
+        elif sender == self.password_edit:
+            self.password_error.setVisible(False)
+        elif sender == self.email_edit:
+            self.email_error.setVisible(False)
+
+        # 如果没有可见的错误，隐藏总错误标签
+        if not any([
+            self.username_error.isVisible(),
+            self.password_error.isVisible(),
+            self.email_error.isVisible()
+        ]):
+            self.error_label.setVisible(False)
+
+    def _clear_all_errors(self):
+        """清除所有错误状态"""
+        self.error_label.setVisible(False)
+        self.username_error.setVisible(False)
+        self.password_error.setVisible(False)
+        self.email_error.setVisible(False)
+
+    def get_form_data(self):
+        """获取表单数据"""
+        return {
+            'username': self.username_edit.text().strip(),
+            'password': self.password_edit.text().strip(),
+            'qid': self.qid_edit.text().strip() if not self.is_login_mode else "",
+            'email': self.email_edit.text().strip() if not self.is_login_mode else "",
+            'is_login': self.is_login_mode,
+            "avatar": self.avatar_path
+        }
+
+    def set_avatar(self, avatar_url):
+        if not avatar_url:
+            return
+
+        if avatar_url.startswith(('http://', 'https://')):
+            self.download_avatar(avatar_url)
+        else:
+            self.avatar.setImage(avatar_url)
+
+    def download_avatar(self, url):
+        try:
+            request = QNetworkRequest(QUrl(url))
+            self.network_manager.get(request)
+        except Exception as e:
+            print(f"Error downloading avatar: {e}")
+
+    def on_avatar_downloaded(self, reply):
+        try:
+            if reply.error():
+                print(f"Failed to download avatar: {reply.errorString()}")
+                return
+
+            data = reply.readAll()
+            image = QImage()
+            image.loadFromData(data)
+
+            if not image.isNull():
+                pixmap = QPixmap.fromImage(image)
+                self.avatar.setImage(pixmap)
+            else:
+                self.avatar.setDefaultAvatar()
+
+        except Exception as e:
+            print(f"Error processing downloaded avatar: {e}")
+            self.avatar.setDefaultAvatar()
+        finally:
+            reply.deleteLater()
+
+    @property
+    def is_login(self):
+        return self.is_login_mode
+
+    @property
+    def is_register(self):
+        return not self.is_login_mode
 
 
 class ApiUsageCard(CardWidget):
@@ -73,12 +447,13 @@ class AccountInfoCard(SimpleCardWidget):
         super().__init__(parent)
         self.setFixedHeight(140)
         self.setContentsMargins(15, 16, 15, 16)
-
+        self.avatar_url = avatar_url
+        self.login_to_cloud()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(15, 10, 15, 10)
         layout.setSpacing(15)
 
-        self.avatar = AvatarWidget()
+        self.avatar = AvatarPickerWidget()
         self.avatar.setFixedSize(64, 64)
         layout.addWidget(self.avatar, 0, Qt.AlignVCenter)
 
@@ -87,8 +462,9 @@ class AccountInfoCard(SimpleCardWidget):
         info_layout.setContentsMargins(0, 5, 0, 5)
 
         name = username or self.tr("Guest")
-        upgrade_text = self.tr("Login") if username == self.tr(
-            "Guest") else self.tr("Upgrade")
+        upgrade_text = self.tr(
+            "Login or Register") if not self.login_key else self.tr("Upgrade")
+
         self.name_label = TitleLabel(name, self)
         self.name_label.setStyleSheet("font-size: 18px; font-weight: 600;")
 
@@ -109,7 +485,7 @@ class AccountInfoCard(SimpleCardWidget):
         button_layout = QVBoxLayout()
         button_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.upgrade_btn = PillPushButton(upgrade_text)
-        self.upgrade_btn.setFixedWidth(110)
+        self.upgrade_btn.setFixedWidth(150)
         button_layout.addWidget(self.upgrade_btn)
         button_layout.addStretch(1)
         layout.addLayout(button_layout)
@@ -121,6 +497,9 @@ class AccountInfoCard(SimpleCardWidget):
         self._network_manager = QNetworkAccessManager()
         self._tmp_avatar_file = None
         self._set_avatar(username, avatar_url)
+
+    def login_to_cloud(self):
+        self.login_key = configer.read_config().get("account", {}).get("login_key", "")
 
     def _set_avatar(self, username, avatar_url):
         print(avatar_url)
@@ -193,8 +572,10 @@ class AccountInfoCard(SimpleCardWidget):
         else:
             self.combo.setVisible(False)
 
+        self.username = username
+        self.avatar_url = avatar_url
         self.upgrade_btn.setText(self.tr("Login") if username == self.tr(
-            "Guest") else self.tr("Upgrade"))
+            "Guest") or "(Local)" else self.tr("Upgrade"))
         self._set_avatar(username, avatar_url)
 
 
@@ -241,6 +622,8 @@ class AccountPage(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_data)
         self.timer.start(5000)
+        self._network_manager = QNetworkAccessManager()
+        self._network_manager.finished.connect(self.on_request_finished)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -275,10 +658,48 @@ class AccountPage(QWidget):
         layout.addStretch(1)
         self.connect_signals()
 
+    def login(self):
+        dialog = login_register_Dialog(
+            self, login=False, avatar_url=self.avatar_url, username=self.username, qid=self.qid, email=self.email)
+        if dialog.exec_():
+            form_data = dialog.get_form_data()
+            url = LOGIN_URL
+            if not form_data["is_login"]:
+                img = b""
+                if dialog.avatar_path:
+                    img = base64.b64encode(
+                        open(dialog.avatar_path, "rb").read()).decode('utf-8')
+                # print(len(img), img[20:])
+                form_data.update({"avatar": img})
+                url = REGISTER_URL
+
+            request = QNetworkRequest(QUrl(url))
+            request.setHeader(
+                QNetworkRequest.ContentTypeHeader, "application/json")
+            byte_array = QByteArray(json.dumps(form_data).encode('utf-8'))
+            self._network_manager.post(request, byte_array)
+
+        else:
+            pass
+
+    def on_request_finished(self, reply):
+        """
+        请求完成时的回调
+        """
+        if reply.error():
+            print(f"Request failed: {reply.errorString()}")
+        else:
+            response_data = reply.readAll().data()
+            print(f"Response received: {response_data.decode('utf-8')}")
+
+        # 删除 reply 以释放资源
+        reply.deleteLater()
+
     def connect_signals(self):
+
         # self.billing_card.recharge_btn.clicked.connect(
         #     self.show_recharge_dialog)
-        self.account_card.upgrade_btn.clicked.connect(self.show_upgrade_dialog)
+        self.account_card.upgrade_btn.clicked.connect(self.login)
 
     def show_recharge_dialog(self):
         InfoBar.info(
