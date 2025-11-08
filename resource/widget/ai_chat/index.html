@@ -12,7 +12,7 @@
     <div class="mobile-frame">
       <div class="chat-header">
         <span>AI Chat</span>
-        <div id="token-usage" class="tag-item">
+        <div id="token-usage" class="tag-item clickable-token" title="点击压缩上下文">
           <span class="icon"></span>
           <span class="token-text">Tokens:</span>
           <span id="token-count" class="token-text">0</span>
@@ -93,6 +93,17 @@
             <div class="progress-fill"></div>
           </div>
           <div class="progress-text"><span id="current-message-index">0</span>/<span id="total-messages">0</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="compression-confirm-overlay" style="display: none">
+      <div class="compression-confirm-modal">
+        <div class="confirm-icon">⚠️</div>
+        <h3>是否压缩上下文?</h3>
+        <p>压缩将总结历史对话以减少token使用量</p>
+        <div class="confirm-buttons">
+          <button class="confirm-button confirm-yes">确定</button>
+          <button class="confirm-button confirm-no">取消</button>
         </div>
       </div>
     </div>

@@ -10,16 +10,6 @@ function updateCompressionProgress(currentIndex, totalMessages, compressedCount,
   progressFill.style.width = progress + '%';
   document.getElementById('current-message-index').textContent = currentIndex;
 }
-function highlightMessage(index) {
-  document.querySelectorAll('.message-group.compressing').forEach(function (el) {
-    el.classList.remove('compressing');
-  });
-  var messageElement = document.querySelector('[data-message-index="' + index + '"]');
-  if (messageElement) {
-    messageElement.classList.add('compressing');
-    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-}
 function hideCompressionUI() {
   var overlay = document.getElementById('compression-overlay');
   overlay.style.animation = 'fadeOut 0.3s ease';
@@ -40,7 +30,6 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
   return new Promise(async (resolve) => {
     try {
       showCompressionUI(aiChatApiOptionsBody.messages.length);
-      await delay(500);
       var compressedCount = 0;
       var removedToolsCount = 0;
       var lastMcpIndex = -1;
@@ -69,8 +58,7 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
       var newMessages = [];
       for (var i = 0; i < aiChatApiOptionsBody.messages.length; i++) {
         updateCompressionProgress(i + 1, aiChatApiOptionsBody.messages.length, compressedCount, removedToolsCount);
-        highlightMessage(i);
-        await delay(200);
+        await delay(1);
         var msg = aiChatApiOptionsBody.messages[i];
         var shouldSkip = false;
         if (msg.role === 'assistant' && typeof msg.content === 'string') {
@@ -202,7 +190,7 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
           newHistory.push(item);
         }
       }
-      await delay(500);
+      await delay(1);
       hideCompressionUI();
       resolve({
         aiChatApiOptionsBody: {
