@@ -673,7 +673,7 @@ class AIBridge(QObject):
         Linux终端()
         通用()
         超级内容()
-        print(self.getSystemPrompt())
+        # print(self.getSystemPrompt())
 
     @pyqtSlot(str, str, str, result=str)
     def callBackend(self, request_id: str, method_name: str, args_json: str):
