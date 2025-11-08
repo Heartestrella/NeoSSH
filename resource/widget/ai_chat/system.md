@@ -36,12 +36,23 @@
 </arguments>
 </use_mcp_tool>
 
-示例:请求使用MCP工具
+示例:请求使用MCP工具 (JSON)
 
 <use_mcp_tool>
 <server_name>weather-server(天气服务器)</server_name>
 <tool_name>get_forecast(获取天气预报)</tool_name>
 <arguments>
 { "city": "San Francisco(旧金山)", "days": 5 }
+</arguments>
+</use_mcp_tool>
+
+示例:请求使用MCP工具 (XML)
+
+<use_mcp_tool>
+<server_name>weather-server(天气服务器)</server_name>
+<tool_name>get_forecast(获取天气预报)</tool_name>
+<arguments>
+<city>San Francisco(旧金山)</city>
+<days>5</days>
 </arguments>
 </use_mcp_tool>
