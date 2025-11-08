@@ -2073,7 +2073,7 @@ function setupWebSocket() {
         const message = JSON.parse(event.data);
         if (message.action === 'updateUserCount') {
           const data = JSON.parse(message.data);
-          statusText.textContent = `在线用户数量:${data.userCount}`;
+          statusText.textContent = `在线用户:${data.userCount}`;
         }
         if (message.action === 'addUser') {
           const data = JSON.parse(message.data);
