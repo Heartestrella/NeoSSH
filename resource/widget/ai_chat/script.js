@@ -1,3 +1,67 @@
+const UserInfoManager = {
+  state: 'pending',
+  data: { name: '加载中...', avatarUrl: null },
+  _promise: null,
+  _subscribers: new Set(),
+  subscribe(callback) {
+    this._subscribers.add(callback);
+    if (this.state !== 'pending') {
+      callback(this.data);
+    }
+  },
+  _notify() {
+    for (const callback of this._subscribers) {
+      callback(this.data);
+    }
+  },
+  get() {
+    if (!this._promise) {
+      this._promise = this._fetch()
+        .then((userInfo) => {
+          this.state = 'resolved';
+          this.data = userInfo;
+          this._notify();
+          return userInfo;
+        })
+        .catch((error) => {
+          console.error('获取用户信息失败:', error);
+          this.state = 'failed';
+          this.data = { name: '用户', avatarUrl: null };
+          this._notify();
+          return this.data;
+        });
+    }
+    return this._promise;
+  },
+  async _fetch() {
+    return new Promise((resolve) => {
+      initializeBackendConnection(async (backendObject) => {
+        if (backendObject) {
+          try {
+            const qqInfo = await callBackend(backendObject, 'getQQUserInfo');
+            if (qqInfo && qqInfo.qq_name && qqInfo.qq_number && qqInfo.qq_name !== '' && qqInfo.qq_number !== '') {
+              const avatarUrl = 'http://q.qlogo.cn/headimg_dl?dst_uin=' + qqInfo.qq_number + '&spec=640&img_type=png';
+              const userInfo = { name: qqInfo.qq_name, avatarUrl: avatarUrl };
+              window.currentUserInfo = userInfo;
+              resolve(userInfo);
+              return;
+            }
+          } catch (e) {
+            console.error('后端调用失败:', e);
+          }
+        }
+        resolve({ name: '用户', avatarUrl: null });
+      });
+    });
+  },
+  update(newUserInfo) {
+    this.state = 'resolved';
+    this.data = newUserInfo;
+    window.currentUserInfo = newUserInfo;
+    this._promise = Promise.resolve(newUserInfo);
+    this._notify();
+  },
+};
 const pendingRequests = new Map();
 const pendingBackendCalls = new Map();
 const ABORTABLE_TOOLS_WHITELIST = ['exe_shell', 'fetchWeb'];
@@ -85,19 +149,8 @@ function setQQUserInfo(qq_name, qq_number) {
   }
   window.ws.send(JSON.stringify({ action: 'setQQUser', data: JSON.stringify({ qq_name, qq_number, id: messageId }) }));
   const avatarUrl = 'http://q.qlogo.cn/headimg_dl?dst_uin=' + qq_number + '&spec=640&img_type=png';
-  document.querySelectorAll('.message-group.user').forEach((groupDiv) => {
-    const iconSpan = groupDiv.querySelector(':scope > .icon');
-    const senderDiv = groupDiv.querySelector('.message-sender');
-    if (iconSpan) {
-      iconSpan.innerHTML = `<img src="${avatarUrl}" style="width: 30px; height: 30px; border-radius: 50%;" />`;
-    }
-    if (senderDiv) {
-      const nameDiv = senderDiv.querySelector('div');
-      if (nameDiv) {
-        nameDiv.textContent = qq_name;
-      }
-    }
-  });
+  const newUserInfo = { name: qq_name, avatarUrl: avatarUrl };
+  UserInfoManager.update(newUserInfo);
 }
 window.OnlineUser = {};
 window.setQQUserInfo = setQQUserInfo;
@@ -245,12 +298,8 @@ class ChatController {
 class UserBubble {
   init(container, messageIndex = -1, historyIndex = -1) {
     return new Promise(async (resolve) => {
-      if (typeof window.getQQUserInfo === 'function') {
-        await getQQUserInfo();
-        getQQUserInfo = null;
-      }
-      const senderName = window.currentUserInfo.name;
-      const senderIcon = window.currentUserInfo.avatarUrl ? `<img src="${window.currentUserInfo.avatarUrl}" style="width:64px;height:64px; border-radius: 50%; object-fit: cover;" />` : '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>';
+      const senderName = UserInfoManager.data.name;
+      const senderIcon = UserInfoManager.data.avatarUrl ? `<img src="${UserInfoManager.data.avatarUrl}" style="width:64px;height:64px; border-radius: 50%; object-fit: cover;" />` : '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>';
       const template = `<div class="message-group user"${messageIndex >= 0 ? ` data-message-index="${messageIndex}"` : ''}${historyIndex >= 0 ? ` data-history-index="${historyIndex}"` : ''}>
               <div class="message-wrapper">
                 <div class="message-sender">
@@ -904,22 +953,6 @@ class SystemBubble {
       );
     });
   }
-}
-function getQQUserInfo() {
-  return new Promise((resolve) => {
-    initializeBackendConnection(async (backendObject) => {
-      if (backendObject) {
-        let qqInfo = await callBackend(backendObject, 'getQQUserInfo');
-        if (qqInfo && qqInfo.qq_name && qqInfo.qq_number && qqInfo.qq_name != '' && qqInfo.qq_number != '') {
-          const avatarUrl = 'http://q.qlogo.cn/headimg_dl?dst_uin=' + qqInfo.qq_number + '&spec=640&img_type=png';
-          window.currentUserInfo = { name: qqInfo.qq_name, avatarUrl: avatarUrl };
-        }
-        resolve(qqInfo);
-      } else {
-        resolve({});
-      }
-    });
-  });
 }
 let pastedImageDataUrls = [];
 function editUserMessage(bubbleElement) {
@@ -1603,6 +1636,19 @@ async function initializeSystemMessage() {
   }
 }
 document.addEventListener('DOMContentLoaded', function () {
+  UserInfoManager.subscribe((userInfo) => {
+    document.querySelectorAll('.message-group.user').forEach((groupDiv) => {
+      const iconSpan = groupDiv.querySelector(':scope > .icon');
+      const nameDiv = groupDiv.querySelector('.message-sender > div:last-child');
+      if (iconSpan && userInfo.avatarUrl) {
+        iconSpan.innerHTML = `<img src="${userInfo.avatarUrl}" style="width:64px;height:64px; border-radius: 50%; object-fit: cover;" />`;
+      }
+      if (nameDiv && userInfo.name !== '加载中...') {
+        nameDiv.textContent = userInfo.name;
+      }
+    });
+  });
+  UserInfoManager.get();
   const attrDataStrPlugin = {
     'after:highlight': (result) => {
       const tempDiv = document.createElement('div');
