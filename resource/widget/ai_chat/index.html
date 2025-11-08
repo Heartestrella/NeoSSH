@@ -12,27 +12,31 @@
     <div class="mobile-frame">
       <div class="chat-header">
         <span>AI Chat</span>
+        <div id="token-usage" class="tag-item">
+          <span class="icon"></span>
+          <span class="token-text">Tokens:</span>
+          <span id="token-count" class="token-text">0</span>
+        </div>
         <div class="header-icons">
           <span title="New Chat" class="new-chat-button">+</span>
           <span id="settings-btn" title="Settings">⚙</span>
         </div>
       </div>
-      <div class="chat-history">
-      </div>
+      <div class="chat-history"></div>
       <div class="chat-body"></div>
       <div class="chat-footer">
-        <div id="approve-reject-buttons" class="action-buttons" style="display: none;">
+        <div id="approve-reject-buttons" class="action-buttons" style="display: none">
           <button class="cmd-button">批准</button>
           <button class="reject-button">拒绝</button>
         </div>
-        <div id="cancel-button-container" class="action-buttons" style="display: none;">
+        <div id="cancel-button-container" class="action-buttons" style="display: none">
           <button class="cancel-button">取消AI对话</button>
         </div>
-        <div id="mcp-tool-control-container" class="action-buttons" style="display: none;">
+        <div id="mcp-tool-control-container" class="action-buttons" style="display: none">
           <button class="continue-button">强制继续</button>
           <button class="abort-tool-button">终止工具</button>
         </div>
-        <div id="mention-popup" class="mention-popup" style="display: none;"></div>
+        <div id="mention-popup" class="mention-popup" style="display: none"></div>
         <div class="input-area">
           <div class="input-wrapper">
             <div id="highlight-layer" aria-hidden="true"></div>
@@ -41,8 +45,8 @@
           <div class="input-actions">
             <button class="icon-button" id="image-button">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-image" viewBox="0 0 16 16">
-                <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
-                <path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"/>
+                <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
+                <path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z" />
               </svg>
             </button>
             <button class="icon-button send-button">➤</button>
@@ -58,33 +62,27 @@
             <span class="icon error-icon"></span>
             <span class="status-text">连接默认模型端点失败</span>
           </div>
-          <div id="token-usage" class="tag-item">
-            <span class="icon"></span>
-            <span class="token-text">Tokens:&nbsp;</span>
-            <span id="token-count" class="token-text">0</span>
-          </div>
         </div>
-        <div class="bottom-icons">
-        </div>
+        <div class="bottom-icons"></div>
       </div>
     </div>
-    <div id="model-select-popup" class="model-select-popup" style="display: none;">
+    <div id="model-select-popup" class="model-select-popup" style="display: none">
       <input type="text" id="model-search-input" placeholder="搜索模型..." />
       <div id="model-options-container" class="model-options-container"></div>
     </div>
-    <div id="settings-popup" class="settings-popup-overlay" style="display: none;">
+    <div id="settings-popup" class="settings-popup-overlay" style="display: none">
       <div class="settings-popup-content">
         <button id="close-settings-btn" class="close-button">&times;</button>
         <iframe src="about:blank"></iframe>
       </div>
     </div>
-    <div id="online-user-popup" class="settings-popup-overlay" style="display: none;">
+    <div id="online-user-popup" class="settings-popup-overlay" style="display: none">
       <div class="settings-popup-content">
         <button id="close-online-user-btn" class="close-button">&times;</button>
         <iframe id="online-user-iframe" src="iframe/onlineUser/index.html"></iframe>
       </div>
     </div>
-    <div id="compression-overlay" style="display: none;">
+    <div id="compression-overlay" style="display: none">
       <div class="compression-modal">
         <div class="compression-header">
           <div class="compression-icon"></div>
@@ -122,4 +120,3 @@
     <script src="script.js"></script>
   </body>
 </html>
-
