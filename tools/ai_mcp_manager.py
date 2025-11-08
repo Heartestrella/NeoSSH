@@ -43,6 +43,20 @@ class AIMCPManager:
             "required": required
         }
 
+    def _determine_input_format(self, schema: Any) -> str:
+        if isinstance(schema, dict):
+            return "JSON"
+        if isinstance(schema, str):
+            try:
+                parsed_json = json.loads(schema)
+                if isinstance(parsed_json, (dict, list)):
+                    return "JSON"
+            except json.JSONDecodeError:
+                pass
+            if schema.strip().startswith('<'):
+                return "XML"
+        return "String"
+
     def register_tool_handler(self, server_name: str, tool_name: str, handler: Callable[..., Any], description: str, schema: Optional[Dict[str, Any]] = None, auto_approve: bool = False):
         if server_name not in self.tools:
             self.tools[server_name] = {}
@@ -51,11 +65,13 @@ class AIMCPManager:
             schema = schema.get("properties", {})
         if auto_approve:
             description += " (自动批准执行,优先使用)"
+        input_format = self._determine_input_format(schema)
         self.tools[server_name][tool_name] = {
             "handler": handler,
             "description": description,
             "schema": schema,
-            "auto_approve": auto_approve
+            "auto_approve": auto_approve,
+            "input_format": input_format
         }
 
     def execute_tool(self, server_name: str, tool_name: str, arguments:str, request_id: str = None) -> Dict[str, Any]:
