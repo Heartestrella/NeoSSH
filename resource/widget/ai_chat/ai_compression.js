@@ -61,9 +61,11 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
         await delay(1);
         var msg = aiChatApiOptionsBody.messages[i];
         var shouldSkip = false;
+        var processed = false;
         if (msg.role === 'assistant' && typeof msg.content === 'string') {
           for (var j = 0; j < mcpIndicesToCompress.length; j++) {
             if (i === mcpIndicesToCompress[j] - 1) {
+              processed = true;
               if (msg.content.indexOf('<use_mcp_tool>') > -1 || msg.content.indexOf('use_mcp_tool') > -1) {
                 var cleanedContent = msg.content;
                 var useToolStart = cleanedContent.indexOf('<use_mcp_tool>');
@@ -87,7 +89,7 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
               }
             }
           }
-          if (!shouldSkip && newMessages.length === i) {
+          if (!shouldSkip && !processed) {
             newMessages.push(msg);
           }
         } else if (mcpIndicesToCompress.indexOf(i) > -1) {
@@ -137,9 +139,11 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
       for (var i = 0; i < messagesHistory.length; i++) {
         var item = messagesHistory[i];
         var shouldSkipHistory = false;
+        var processedHistory = false;
         if (!item.isMcp && item.messages.role === 'assistant' && typeof item.messages.content === 'string') {
           for (var j = 0; j < mcpHistoryIndicesToCompress.length; j++) {
             if (i === mcpHistoryIndicesToCompress[j] - 1) {
+              processedHistory = true;
               if (item.messages.content.indexOf('<use_mcp_tool>') > -1 || item.messages.content.indexOf('use_mcp_tool') > -1) {
                 var cleanedContent = item.messages.content;
                 var useToolStart = cleanedContent.indexOf('<use_mcp_tool>');
@@ -165,7 +169,7 @@ function compressContext(aiChatApiOptionsBody, messagesHistory) {
               }
             }
           }
-          if (!shouldSkipHistory && newHistory.length === i) {
+          if (!shouldSkipHistory && !processedHistory) {
             newHistory.push(item);
           }
         } else if (mcpHistoryIndicesToCompress.indexOf(i) > -1) {
