@@ -688,6 +688,8 @@ class Window(FramelessWindow):
 
     def update_user_info(self, name, qid, local=True):
         config = configer.read_config()
+        if config["account"]["apikey"]:
+            return  # apikey exists, do not modify account info
         noneed_change = False
 
         if local:
@@ -2027,20 +2029,24 @@ def excepthook(exc_type, exc_value, exc_traceback):
 
 
 def update_splash_progress(step, total_steps=10, message=""):
-    if not pyi_splash:
-        return
-
-    progress = int((step / total_steps) * 100)
-
-    if message:
-        clean_message = message.replace('\n', ' ').replace('\r', '')
-        display_text = f"{clean_message} {progress}%"
-    else:
-        display_text = f"Loading {progress}%"
-
     try:
-        pyi_splash.update_text(display_text)
-    except Exception as e:
+        if not pyi_splash:
+            return
+
+        progress = int((step / total_steps) * 100)
+
+        if message:
+            clean_message = message.replace('\n', ' ').replace('\r', '')
+            display_text = f"{clean_message} {progress}%"
+        else:
+            display_text = f"Loading {progress}%"
+
+        try:
+            pyi_splash.update_text(display_text)
+        except Exception as e:
+            pass
+
+    except:
         pass
 
 

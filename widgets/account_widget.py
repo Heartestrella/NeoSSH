@@ -20,6 +20,7 @@ configer = SCM()
 
 LOGIN_URL = "http://localhost:5678/login"
 REGISTER_URL = "http://localhost:5678/register"
+config_dir = Path.home() / ".config" / "pyqt-ssh"
 
 
 def set_font_recursive(widget: QWidget, font):
@@ -148,7 +149,7 @@ class login_register_Dialog(MessageBoxBase):
             return
 
         # 获取保存路径（~/.config/pyqt-ssh/avatar_<username>.png）
-        config_dir = Path.home() / ".config" / "pyqt-ssh"
+
         config_dir.mkdir(parents=True, exist_ok=True)  # 创建目录（如果不存在的话）
         avatar_path = config_dir / f"avatar_{username}.png"
 
@@ -463,7 +464,7 @@ class AccountInfoCard(SimpleCardWidget):
 
         name = username or self.tr("Guest")
         upgrade_text = self.tr(
-            "Login or Register") if not self.login_key else self.tr("Upgrade")
+            "Login or Register") if not self.apikey else self.tr("Upgrade")
 
         self.name_label = TitleLabel(name, self)
         self.name_label.setStyleSheet("font-size: 18px; font-weight: 600;")
@@ -499,7 +500,7 @@ class AccountInfoCard(SimpleCardWidget):
         self._set_avatar(username, avatar_url)
 
     def login_to_cloud(self):
-        self.login_key = configer.read_config().get("account", {}).get("login_key", "")
+        self.apikey = configer.read_config().get("account", {}).get("apikey", "")
 
     def _set_avatar(self, username, avatar_url):
         print(avatar_url)
@@ -574,8 +575,8 @@ class AccountInfoCard(SimpleCardWidget):
 
         self.username = username
         self.avatar_url = avatar_url
-        self.upgrade_btn.setText(self.tr("Login") if username == self.tr(
-            "Guest") or "(Local)" else self.tr("Upgrade"))
+        self.upgrade_btn.setText(
+            self.tr("Login or Register") if self.apikey else self.tr("Upgrade"))
         self._set_avatar(username, avatar_url)
 
 
@@ -618,12 +619,12 @@ class AccountPage(QWidget):
         self.email = email
         self.avatar_url = avatar_url
         self.combo = combo
-        self.setup_ui()
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_data)
-        self.timer.start(5000)
         self._network_manager = QNetworkAccessManager()
         self._network_manager.finished.connect(self.on_request_finished)
+        self.setup_ui()
+        # self.timer = QTimer(self)
+        # self.timer.timeout.connect(self.update_data)
+        # self.timer.start(5000)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -641,8 +642,8 @@ class AccountPage(QWidget):
         usage_grid = QGridLayout()
         usage_grid.setSpacing(15)
         self.api_cards = [
-            ApiUsageCard("API Calls", 1250, 5000, "times"),
-            ApiUsageCard("Tokens Usage", 850000, 1000000, "tokens"),
+            ApiUsageCard(self.tr("API Calls"), 0, 0, self.tr("times")),
+            ApiUsageCard(self.tr("Tokens Usage"), 0, 0, self.tr("tokens")),
         ]
         for i, card in enumerate(self.api_cards):
             row, col = divmod(i, 2)
@@ -657,42 +658,192 @@ class AccountPage(QWidget):
         layout.addWidget(self.billing_card)
         layout.addStretch(1)
         self.connect_signals()
+        self.auto_login()
 
-    def login(self):
-        dialog = login_register_Dialog(
-            self, login=False, avatar_url=self.avatar_url, username=self.username, qid=self.qid, email=self.email)
-        if dialog.exec_():
-            form_data = dialog.get_form_data()
-            url = LOGIN_URL
-            if not form_data["is_login"]:
-                img = b""
-                if dialog.avatar_path:
-                    img = base64.b64encode(
-                        open(dialog.avatar_path, "rb").read()).decode('utf-8')
-                # print(len(img), img[20:])
-                form_data.update({"avatar": img})
-                url = REGISTER_URL
-
-            request = QNetworkRequest(QUrl(url))
-            request.setHeader(
-                QNetworkRequest.ContentTypeHeader, "application/json")
-            byte_array = QByteArray(json.dumps(form_data).encode('utf-8'))
-            self._network_manager.post(request, byte_array)
-
+    def auto_login(self):
+        if self.account_card.apikey:
+            config = configer.read_config()
+            username = config.get("account", {}).get("user", "")
+            password = config.get("account", {}).get("password", "")
+            if username and password:
+                self.password = password
+                form_data = {
+                    "username": username,
+                    "password": password
+                }
+                request = QNetworkRequest(QUrl(LOGIN_URL))
+                request.setHeader(
+                    QNetworkRequest.ContentTypeHeader, "application/json")
+                byte_array = QByteArray(
+                    json.dumps(form_data).encode('utf-8'))
+                self._network_manager.post(request, byte_array)
         else:
             pass
+
+    def login(self):
+        if self.account_card.upgrade_btn.text() == self.tr("Upgrade"):
+            pass
+        elif self.account_card.upgrade_btn.text() == self.tr("Verify Email"):
+            pass
+        else:  # Login or Register
+            dialog = login_register_Dialog(
+                self, login=False, avatar_url=self.avatar_url, username=self.username, qid=self.qid, email=self.email)
+            if dialog.exec_():
+                form_data = dialog.get_form_data()
+                url = LOGIN_URL
+                if not form_data["is_login"]:
+                    img = b""
+                    if dialog.avatar_path:
+                        img = base64.b64encode(
+                            open(dialog.avatar_path, "rb").read()).decode('utf-8')
+                    # print(len(img), img[20:])
+                    form_data.update({"avatar": img})
+                    url = REGISTER_URL
+                else:
+                    form_data.pop("avatar", None)
+                    form_data.pop("email", None)
+                    form_data.pop("qid", None)
+                self.passwrod = form_data["password"]
+                request = QNetworkRequest(QUrl(url))
+                request.setHeader(
+                    QNetworkRequest.ContentTypeHeader, "application/json")
+                byte_array = QByteArray(json.dumps(form_data).encode('utf-8'))
+                self._network_manager.post(request, byte_array)
+
+            else:
+                pass
 
     def on_request_finished(self, reply):
         """
         请求完成时的回调
         """
+
+        def info_show(title, content, status=True):
+            if status:
+                InfoBar.info(
+                    title=title,
+                    content=content,
+                    orient=Qt.Horizontal, isClosable=True,
+                    position=InfoBarPosition.TOP, duration=3000, parent=self
+                )
+            else:
+                InfoBar.error(
+                    title=title,
+                    content=content,
+                    orient=Qt.Horizontal, isClosable=True,
+                    position=InfoBarPosition.TOP, duration=-1, parent=self
+                )
+
+        status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        print(f"HTTP状态码: {status_code}")
+        print(f"网络错误: {reply.error()} - {reply.errorString()}")
+
         if reply.error():
-            print(f"Request failed: {reply.errorString()}")
+            response_data = reply.readAll().data()
+            response_text = response_data.decode(
+                'utf-8') if response_data else ""
+            # print(f"错误响应内容: {response_text}")
+
+            try:
+                if response_text:
+                    error_response = json.loads(response_text)
+                    error_message = error_response.get(
+                        'error') or error_response.get('message') or response_text
+                else:
+                    error_message = reply.errorString()
+            except:
+                error_message = reply.errorString()
+
+            if status_code == 409:
+                info_show(self.tr("Registration Conflict"),
+                          self.tr("Username or email already registered, please use other information"), False)
+            elif status_code == 400:
+                info_show(self.tr("Request Error"),
+                          self.tr("Request parameters are incorrect, please check the information"), False)
+            elif status_code == 401:
+                info_show(self.tr("Authentication Failed"),
+                          self.tr("Username or password is incorrect"), False)
+            else:
+                info_show(self.tr("Request Failed"),
+                          self.tr(f"Error: {error_message}"), False)
+
         else:
             response_data = reply.readAll().data()
-            print(f"Response received: {response_data.decode('utf-8')}")
+            response_text = response_data.decode('utf-8')
+            print(f"成功响应: {response_text}")
 
-        # 删除 reply 以释放资源
+            try:
+                json_response = json.loads(response_text)
+                success = json_response.get("success")
+                message = json_response.get("message")
+                username = json_response.get("username")
+                email = json_response.get("email")
+                qid = json_response.get("qid")
+                self.email_verified = json_response.get("email_verified")
+                api_key = json_response.get("api_key")
+                combo = json_response.get("combo")
+                type_ = json_response.get("type")
+
+                config = configer.read_config()["account"]
+                config["user"] = username
+                config["email"] = email
+                config["qid"] = qid
+                config["combo"] = combo
+                config["apikey"] = api_key
+                config["password"] = self.password
+
+                if type_ == "login":
+                    if not success:
+                        info_show(self.tr("Login Failed"),
+                                  self.tr(message), False)
+                        reply.deleteLater()
+                        return
+                    avatar = json_response.get("avatar")
+                    if avatar:
+                        try:
+                            b64_img = base64.b64decode(avatar)
+                            avatar_path = config_dir / f"avatar_{username}.png"
+                            with open(avatar_path, 'wb') as f:
+                                f.write(b64_img)
+                            config["avatar_url"] = str(avatar_path)
+                        except Exception as e:
+                            print(f"头像保存失败: {e}")
+                            message += self.tr(
+                                "\nAvatar save failed (you may not have uploaded an avatar)")
+                    configer.revise_config("account", config)
+                    info_show(self.tr("Login Successful"),
+                              self.tr(message), True)
+
+                    self.update_account_info(
+                        username=username,
+                        qid=qid,
+                        email=email,
+                        combo=combo,
+                        avatar_url=config.get("avatar_url")
+                    )
+                    if not self.email_verified:
+                        self.account_card.upgrade_btn.setText(
+                            self.tr("Verify Email"))
+                else:
+                    if not success:
+                        info_show(self.tr("Registration Failed"),
+                                  self.tr(message), False)
+                        reply.deleteLater()
+                        return
+
+                    configer.revise_config("account", config)
+                    info_show(self.tr("Registration Successful"),
+                              self.tr("Registration successful! Please log in with your new account"), True)
+                    self.account_card.upgrade_btn.setText(
+                        self.tr("Verify Email"))
+
+            except json.JSONDecodeError as e:
+                info_show(self.tr("Response Parse Failed"),
+                          self.tr(f"Server returned invalid JSON data: {e}"), False)
+            except Exception as e:
+                info_show(self.tr("Processing Error"),
+                          self.tr(f"An error occurred while processing the response: {e}"), False)
+
         reply.deleteLater()
 
     def connect_signals(self):
