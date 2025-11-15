@@ -1,25 +1,29 @@
-import os
-import random
-from PyQt5.QtCore import Qt, QTimer, QUrl, pyqtSignal, QByteArray
-from PyQt5.QtGui import QFont, QPixmap, QPainter, QColor, QPixmap, QImage
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QUrl, QByteArray
+from PyQt5.QtGui import QImage, QPixmap, QFont, QPainter, QColor
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                             QWidget, QGridLayout)
+from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from qfluentwidgets import (
-    CardWidget, SimpleCardWidget, TitleLabel, CaptionLabel,
-    StrongBodyLabel, BodyLabel, PillPushButton, MessageBoxBase,  LineEdit, PasswordLineEdit,
-    ProgressRing, InfoBar, InfoBarPosition, PushButton
+    SubtitleLabel, StrongBodyLabel, BodyLabel, PrimaryPushButton, LineEdit,
+    CardWidget, SimpleCardWidget, TitleLabel, CaptionLabel, PillPushButton,
+    MessageBoxBase, PasswordLineEdit, ProgressRing, InfoBar, InfoBarPosition,
+    PushButton, MessageBox
 )
 from pathlib import Path
 from tools.font_config import font_config
 from widgets.AvatarPicker import AvatarPickerWidget
-from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from tools.setting_config import SCM
 import base64
 import json
+import os
+import random
+
 font_ = font_config()
 configer = SCM()
 
-LOGIN_URL = "http://localhost:5678/login"
-REGISTER_URL = "http://localhost:5678/register"
+LOGIN_URL = "https://account.neossh.top/login"
+REGISTER_URL = "https://account.neossh.top/register"
+CHANGE_AVATAR_URL = "https://account.neossh.top/change_pic"
 config_dir = Path.home() / ".config" / "pyqt-ssh"
 
 
@@ -31,13 +35,414 @@ def set_font_recursive(widget: QWidget, font):
         child.setFont(font)
 
 
+class CaptchaDialog(QDialog):
+    verification_success = pyqtSignal()
+    verification_failed = pyqtSignal(str)
+
+    def __init__(self, username: str, password: str, email: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("邮箱验证")
+        self.setFixedSize(700, 500)
+
+        self.server_url = "https://account.neossh.top/verify_email"
+        self.username = username
+        self.password = password
+        self.test_email = email
+
+        self.network_manager = QNetworkAccessManager(self)
+        self.network_manager.finished.connect(self.on_network_reply)
+
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.setStyleSheet("""
+            QDialog {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #2D3748, stop: 1 #1A202C);
+                border-radius: 12px;
+            }
+        """)
+
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(25, 25, 25, 25)
+        main_layout.setSpacing(30)
+
+        # 左侧：验证码图片区域
+        left_widget = QWidget()
+        left_widget.setFixedWidth(300)
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        title_label = SubtitleLabel("邮箱验证", self)
+        title_label.setStyleSheet("""
+            color: #E2E8F0;
+            font-size: 20px;
+            font-weight: bold;
+            padding: 10px 0px;
+            background: transparent;
+        """)
+        title_label.setAlignment(Qt.AlignCenter)
+        left_layout.addWidget(title_label)
+
+        left_layout.addSpacing(20)
+
+        self.captcha_label = QLabel("验证码加载中...", self)
+        self.captcha_label.setAlignment(Qt.AlignCenter)
+        self.captcha_label.setFixedSize(280, 120)
+        self.captcha_label.setStyleSheet("""
+            background: rgba(45, 55, 72, 0.6);
+            border: 2px dashed #4A5568;
+            border-radius: 10px;
+            color: #A0AEC0;
+            font-size: 13px;
+        """)
+        left_layout.addWidget(self.captcha_label, alignment=Qt.AlignCenter)
+
+        left_layout.addSpacing(15)
+
+        self.refresh_btn = PrimaryPushButton("🔄 刷新验证码", self)
+        self.refresh_btn.setFixedHeight(36)
+        self.refresh_btn.clicked.connect(self.get_captcha)
+        left_layout.addWidget(self.refresh_btn)
+
+        left_layout.addStretch(1)
+
+        # 右侧：表单区域
+        right_widget = QWidget()
+        right_widget.setFixedWidth(300)
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        email_card = QWidget()
+        email_card.setFixedHeight(80)
+        email_card.setStyleSheet("""
+            background: rgba(45, 55, 72, 0.8);
+            border: 1px solid #4A5568;
+            border-radius: 10px;
+        """)
+        email_layout = QVBoxLayout(email_card)
+        email_layout.setContentsMargins(15, 12, 15, 12)
+
+        email_title = BodyLabel("验证邮箱", self)
+        email_title.setStyleSheet("color: #A0AEC0; font-size: 12px;")
+        email_layout.addWidget(email_title)
+
+        email_label = StrongBodyLabel(self.test_email, self)
+        email_label.setStyleSheet(
+            "color: #E2E8F0; font-size: 14px; font-weight: bold;")
+        email_layout.addWidget(email_label)
+        right_layout.addWidget(email_card)
+
+        right_layout.addSpacing(20)
+
+        captcha_input_card = QWidget()
+        captcha_input_card.setFixedHeight(90)
+        captcha_input_card.setStyleSheet("""
+            background: rgba(45, 55, 72, 0.8);
+            border: 1px solid #4A5568;
+            border-radius: 10px;
+        """)
+        captcha_input_layout = QVBoxLayout(captcha_input_card)
+        captcha_input_layout.setContentsMargins(15, 12, 15, 12)
+
+        captcha_title = BodyLabel("图片验证码", self)
+        captcha_title.setStyleSheet(
+            "color: #A0AEC0; font-size: 12px; margin-bottom: 8px;")
+        captcha_input_layout.addWidget(captcha_title)
+
+        self.captcha_input = LineEdit(self)
+        self.captcha_input.setPlaceholderText("请输入图片中的验证码")
+        self.captcha_input.setClearButtonEnabled(True)
+        self.captcha_input.setFixedHeight(38)
+        self.captcha_input.setStyleSheet("""
+            background: #2D3748;
+            border: 1px solid #4A5568;
+            border-radius: 8px;
+            padding: 0px 12px;
+            color: #E2E8F0;
+            font-size: 14px;
+        """)
+        captcha_input_layout.addWidget(self.captcha_input)
+        right_layout.addWidget(captcha_input_card)
+
+        right_layout.addSpacing(15)
+
+        self.get_code_btn = PrimaryPushButton("📧 获取邮箱验证码", self)
+        self.get_code_btn.setFixedHeight(40)
+        self.get_code_btn.clicked.connect(self.verify_and_get_code)
+        right_layout.addWidget(self.get_code_btn)
+
+        right_layout.addSpacing(15)
+
+        self.email_code_widget = QWidget()
+        self.email_code_widget.setFixedHeight(90)
+        self.email_code_widget.setStyleSheet("""
+            background: rgba(45, 55, 72, 0.8);
+            border: 1px solid #4A5568;
+            border-radius: 10px;
+        """)
+        email_code_layout = QVBoxLayout(self.email_code_widget)
+        email_code_layout.setContentsMargins(15, 12, 15, 12)
+
+        email_code_title = BodyLabel("邮箱验证码", self)
+        email_code_title.setStyleSheet(
+            "color: #A0AEC0; font-size: 12px; margin-bottom: 8px;")
+        email_code_layout.addWidget(email_code_title)
+
+        self.email_code_input = LineEdit()
+        self.email_code_input.setPlaceholderText("请输入发送到邮箱的验证码")
+        self.email_code_input.setClearButtonEnabled(True)
+        self.email_code_input.setFixedHeight(38)
+        self.email_code_input.setStyleSheet("""
+            background: #2D3748;
+            border: 1px solid #4A5568;
+            border-radius: 8px;
+            padding: 0px 12px;
+            color: #E2E8F0;
+            font-size: 14px;
+        """)
+        email_code_layout.addWidget(self.email_code_input)
+        right_layout.addWidget(self.email_code_widget)
+        self.email_code_widget.setVisible(False)
+
+        right_layout.addSpacing(15)
+
+        self.verify_email_btn = PrimaryPushButton("✅ 验证邮箱验证码", self)
+        self.verify_email_btn.setFixedHeight(40)
+        self.verify_email_btn.clicked.connect(self.verify_email_code)
+        right_layout.addWidget(self.verify_email_btn)
+        self.verify_email_btn.setVisible(False)
+
+        right_layout.addSpacing(20)
+
+        status_card = QWidget()
+        status_card.setFixedHeight(70)
+        status_card.setStyleSheet("""
+            background: rgba(45, 55, 72, 0.6);
+            border: 1px solid #4A5568;
+            border-radius: 10px;
+        """)
+        status_layout = QVBoxLayout(status_card)
+        status_layout.setContentsMargins(15, 10, 15, 10)
+
+        self.status_label = BodyLabel("正在初始化...", self)
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet(
+            "color: #A0AEC0; font-size: 12px; line-height: 1.4;")
+        status_layout.addWidget(self.status_label)
+        right_layout.addWidget(status_card)
+
+        # 将左右两侧添加到主布局
+        main_layout.addWidget(left_widget)
+        main_layout.addWidget(right_widget)
+
+        self.apply_button_style()
+
+        self.current_reply = None
+        self.current_request_type = None
+
+        QTimer.singleShot(100, self.get_captcha)
+
+    def apply_button_style(self):
+        button_style = """
+            PrimaryPushButton {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #4299E1, stop: 1 #3182CE);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            PrimaryPushButton:hover {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #3182CE, stop: 1 #2B6CB0);
+            }
+            PrimaryPushButton:pressed {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #2B6CB0, stop: 1 #2C5282);
+            }
+            PrimaryPushButton:disabled {
+                background: #4A5568;
+                color: #A0AEC0;
+            }
+        """
+
+        self.refresh_btn.setStyleSheet(button_style)
+        self.get_code_btn.setStyleSheet(button_style)
+        self.verify_email_btn.setStyleSheet(button_style)
+
+    def get_captcha(self):
+        if self.current_reply and self.current_reply.isRunning():
+            self.current_reply.abort()
+
+        self.status_label.setText("正在获取验证码...")
+        self.status_label.setStyleSheet("color: #63B3ED;")
+
+        payload = {
+            "username": self.username,
+            "password": self.password,
+            "email": self.test_email
+        }
+        self.send_request(payload, 'get_captcha')
+
+    def verify_and_get_code(self):
+        captcha_code = self.captcha_input.text().strip()
+        if not captcha_code:
+            self.status_label.setText("请输入图片验证码")
+            self.status_label.setStyleSheet("color: #FC8181;")
+            return
+
+        self.status_label.setText("正在验证图片验证码...")
+        self.status_label.setStyleSheet("color: #63B3ED;")
+
+        payload = {
+            "username": self.username,
+            "password": self.password,
+            "email": self.test_email,
+            "captcha": captcha_code
+        }
+        self.send_request(payload, 'verify_captcha')
+
+    def verify_email_code(self):
+        email_code = self.email_code_input.text().strip()
+        if not email_code:
+            self.status_label.setText("请输入邮箱验证码")
+            self.status_label.setStyleSheet("color: #FC8181;")
+            return
+
+        self.status_label.setText("正在验证邮箱验证码...")
+        self.status_label.setStyleSheet("color: #63B3ED;")
+
+        payload = {
+            "username": self.username,
+            "password": self.password,
+            "email": self.test_email,
+            "captcha": email_code
+        }
+        self.send_request(payload, 'verify_email')
+
+    def send_request(self, payload, request_type):
+        if self.current_reply and self.current_reply.isRunning():
+            self.current_reply.abort()
+
+        request = QNetworkRequest(QUrl(self.server_url))
+        request.setHeader(QNetworkRequest.ContentTypeHeader,
+                          "application/json")
+
+        json_data = json.dumps(payload).encode('utf-8')
+        self.current_reply = self.network_manager.post(request, json_data)
+        self.current_request_type = request_type
+
+    def on_network_reply(self, reply):
+        if reply != self.current_reply:
+            return
+
+        data = reply.readAll().data()
+
+        if reply.error() != QNetworkReply.NoError:
+            error_detail = ""
+            try:
+                if data:
+                    response_data = json.loads(data.decode('utf-8'))
+                    error_detail = response_data.get('error', '')
+            except:
+                pass
+
+            if error_detail:
+                self.status_label.setText(f"❌ {error_detail}")
+            else:
+                self.status_label.setText(f"❌ {reply.errorString()}")
+            self.status_label.setStyleSheet("color: #FC8181;")
+
+            reply.deleteLater()
+            self.current_reply = None
+            self.current_request_type = None
+            return
+
+        try:
+            response_data = json.loads(data.decode('utf-8'))
+            self.handle_response(response_data, self.current_request_type)
+        except json.JSONDecodeError as e:
+            self.status_label.setText(f"❌ 响应解析错误: {str(e)}")
+            self.status_label.setStyleSheet("color: #FC8181;")
+
+        reply.deleteLater()
+        self.current_reply = None
+        self.current_request_type = None
+
+    def handle_response(self, data, request_type):
+        if request_type == 'get_captcha':
+            self.handle_captcha_response(data)
+        elif request_type == 'verify_captcha':
+            self.handle_verify_captcha_response(data)
+        elif request_type == 'verify_email':
+            self.handle_verify_email_response(data)
+
+    def handle_captcha_response(self, data):
+        if 'captcha_image' in data:
+            image_data = data['captcha_image']
+            if image_data.startswith('data:image/png;base64,'):
+                image_data = image_data.replace('data:image/png;base64,', '')
+
+            self.display_captcha_image(image_data)
+            self.status_label.setText("验证码加载成功，请输入图片中的验证码")
+            self.status_label.setStyleSheet("color: #68D391;")
+        else:
+            error_msg = data.get('error', '获取验证码失败')
+            self.status_label.setText(f"❌ {error_msg}")
+            self.status_label.setStyleSheet("color: #FC8181;")
+
+    def handle_verify_captcha_response(self, data):
+        if 'message' in data:
+            message = data['message']
+            self.status_label.setText(f"✅ {message}")
+            self.status_label.setStyleSheet("color: #68D391;")
+            self.email_code_widget.setVisible(True)
+            self.verify_email_btn.setVisible(True)
+            self.get_code_btn.setEnabled(False)
+        else:
+            error_msg = data.get('error', '验证失败')
+            self.status_label.setText(f"❌ {error_msg}")
+            self.status_label.setStyleSheet("color: #FC8181;")
+
+    def handle_verify_email_response(self, data):
+        if 'message' in data:
+            message = data['message']
+            self.status_label.setText(f"✅ {message}")
+            self.status_label.setStyleSheet("color: #68D391;")
+            self.verification_success.emit()
+            QTimer.singleShot(3000, self.accept)
+        else:
+            error_msg = data.get('error', '验证失败')
+            self.status_label.setText(f"❌ {error_msg}")
+            self.status_label.setStyleSheet("color: #FC8181;")
+
+    def display_captcha_image(self, base64_data):
+        try:
+            image_bytes = base64.b64decode(base64_data)
+            image = QImage()
+            image.loadFromData(image_bytes)
+            pixmap = QPixmap.fromImage(image)
+            scaled_pixmap = pixmap.scaled(
+                280, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.captcha_label.setPixmap(scaled_pixmap)
+        except Exception as e:
+            self.captcha_label.setText("图片显示失败")
+
+    def closeEvent(self, event):
+        if self.current_reply and self.current_reply.isRunning():
+            self.current_reply.abort()
+        super().closeEvent(event)
+
+
 class login_register_Dialog(MessageBoxBase):
     yesButtonClicked = pyqtSignal()
     cancelButtonClicked = pyqtSignal()
 
     def __init__(self, parent=None, login=True, username="", avatar_url="", qid="", email=""):
         super().__init__(parent)
-
+        username = username if username else "Guest"
         self.is_login_mode = login
         type_str = self.tr("Login") if login else self.tr("Register")
 
@@ -459,21 +864,17 @@ class AccountInfoCard(SimpleCardWidget):
         layout.addWidget(self.avatar, 0, Qt.AlignVCenter)
 
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(8)
+        info_layout.setSpacing(6)
         info_layout.setContentsMargins(0, 5, 0, 5)
 
         name = username or self.tr("Guest")
-        upgrade_text = self.tr(
-            "Login or Register") if not self.apikey else self.tr("Upgrade")
-
         self.name_label = TitleLabel(name, self)
         self.name_label.setStyleSheet("font-size: 18px; font-weight: 600;")
 
-        self.qid_label = CaptionLabel(
-            self.tr(f"QID: {qid}") if qid else self.tr("QID: "), self)
+        self.qid_label = CaptionLabel(f"QID: {qid}" if qid else "QID: ", self)
         self.email_label = CaptionLabel(email or "", self)
         self.email_label.setStyleSheet("color: #666;")
-        self.combo = CaptionLabel(self.tr(f"{combo}") if combo else "", self)
+        self.combo = CaptionLabel(str(combo) if combo else "", self)
 
         info_layout.addWidget(self.name_label)
         info_layout.addWidget(self.qid_label)
@@ -484,10 +885,19 @@ class AccountInfoCard(SimpleCardWidget):
         layout.addLayout(info_layout, stretch=1)
 
         button_layout = QVBoxLayout()
+        button_layout.setSpacing(8)
         button_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.upgrade_btn = PillPushButton(upgrade_text)
-        self.upgrade_btn.setFixedWidth(150)
+
+        self.upgrade_btn = PillPushButton(
+            self.tr("Login or Register") if not self.apikey else self.tr("Upgrade"))
+        self.upgrade_btn.setFixedWidth(120)
+
+        self.logout_btn = PillPushButton(self.tr("Logout"))
+        self.logout_btn.setFixedWidth(120)
+        # self.logout_btn.setVisible(bool(username))
+
         button_layout.addWidget(self.upgrade_btn)
+        button_layout.addWidget(self.logout_btn)
         button_layout.addStretch(1)
         layout.addLayout(button_layout)
 
@@ -501,9 +911,9 @@ class AccountInfoCard(SimpleCardWidget):
 
     def login_to_cloud(self):
         self.apikey = configer.read_config().get("account", {}).get("apikey", "")
+        print(self.apikey)
 
     def _set_avatar(self, username, avatar_url):
-        print(avatar_url)
         if self._tmp_avatar_file and os.path.exists(self._tmp_avatar_file):
             try:
                 os.remove(self._tmp_avatar_file)
@@ -556,7 +966,7 @@ class AccountInfoCard(SimpleCardWidget):
         self.name_label.setText(username or self.tr("Guest"))
 
         if qid:
-            self.qid_label.setText(self.tr(f"QID: {qid}"))
+            self.qid_label.setText(f"QID: {qid}")
             self.qid_label.setVisible(True)
         else:
             self.qid_label.setVisible(False)
@@ -568,15 +978,18 @@ class AccountInfoCard(SimpleCardWidget):
             self.email_label.setVisible(False)
 
         if combo:
-            self.combo.setText(self.tr(str(combo)))
+            self.combo.setText(str(combo))
             self.combo.setVisible(True)
         else:
             self.combo.setVisible(False)
 
         self.username = username
         self.avatar_url = avatar_url
+
         self.upgrade_btn.setText(
-            self.tr("Login or Register") if self.apikey else self.tr("Upgrade"))
+            self.tr("Upgrade") if self.apikey else self.tr("Login or Register"))
+        # self.logout_btn.setVisible(bool(self.apikey))
+
         self._set_avatar(username, avatar_url)
 
 
@@ -614,11 +1027,13 @@ class BillingCard(CardWidget):
 class AccountPage(QWidget):
     def __init__(self, username=None, qid=None, email=None,  avatar_url=None, combo=None, parent=None):
         super().__init__(parent)
+        self.logged = False
         self.username = username
         self.qid = qid
         self.email = email
         self.avatar_url = avatar_url
         self.combo = combo
+        self.password = configer.read_config().get("account", {}).get("password", "")
         self._network_manager = QNetworkAccessManager()
         self._network_manager.finished.connect(self.on_request_finished)
         self.setup_ui()
@@ -638,7 +1053,8 @@ class AccountPage(QWidget):
         self.account_card = AccountInfoCard(
             username=self.username, qid=self.qid, email=self.email, avatar_url=self.avatar_url, combo=self.combo
         )
-
+        self.account_card.logout_btn.clicked.connect(self.logout)
+        self.account_card.avatar.imageSelected.connect(self.update_avatar)
         usage_grid = QGridLayout()
         usage_grid.setSpacing(15)
         self.api_cards = [
@@ -659,6 +1075,70 @@ class AccountPage(QWidget):
         layout.addStretch(1)
         self.connect_signals()
         self.auto_login()
+
+    def update_avatar(self, path):
+        if self.logged:
+            img = base64.b64encode(
+                open(path, "rb").read()).decode('utf-8')
+            data = {
+                "username": self.username,
+                "password": self.password,
+                "new_avatar": img
+            }
+            request = QNetworkRequest(QUrl(CHANGE_AVATAR_URL))
+            request.setHeader(
+                QNetworkRequest.ContentTypeHeader, "application/json")
+            byte_array = QByteArray(
+                json.dumps(data).encode('utf-8'))
+            self._network_manager.post(request, byte_array)
+
+    def logout(self):
+        msgbox = MessageBox(self.tr("Are u sure to logout?"), self.tr(
+            "You will be logged out after confirmation"), self)
+        if msgbox.exec_():
+            print("Logout account")
+            config = configer.read_config()
+            account_config: dict = config.get("account", {})
+            account_config.update({
+                "user": "",
+                "email": "",
+                "qid": "",
+                "combo": "",
+                "apikey": "",
+                "password": "",
+                "avatar_url": ""
+            })
+
+            configer.revise_config("account", account_config)
+
+            self.update_account_info(
+                username=None,
+                qid=None,
+                email=None,
+                combo=None,
+                avatar_url=None
+            )
+
+            for card in self.api_cards:
+                card.used = 0
+                card.total = 0
+                card.update_display()
+
+            self.billing_card.balance_label.setText(self.tr("¥ 0.00"))
+            self.billing_card.billing_label.setText(
+                self.tr("Next billing date: None"))
+
+            InfoBar.success(
+                title=self.tr("Logout Successful"),
+                content=self.tr("You have been logged out successfully."),
+                orient=Qt.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=3000,
+                parent=self
+            )
+
+            print("User logged out successfully")
 
     def auto_login(self):
         if self.account_card.apikey:
@@ -684,7 +1164,9 @@ class AccountPage(QWidget):
         if self.account_card.upgrade_btn.text() == self.tr("Upgrade"):
             pass
         elif self.account_card.upgrade_btn.text() == self.tr("Verify Email"):
-            pass
+            dialog = CaptchaDialog(
+                self.username, self.password, self.email, self)
+            dialog.exec_()
         else:  # Login or Register
             dialog = login_register_Dialog(
                 self, login=False, avatar_url=self.avatar_url, username=self.username, qid=self.qid, email=self.email)
@@ -703,7 +1185,7 @@ class AccountPage(QWidget):
                     form_data.pop("avatar", None)
                     form_data.pop("email", None)
                     form_data.pop("qid", None)
-                self.passwrod = form_data["password"]
+                self.password = form_data["password"]
                 request = QNetworkRequest(QUrl(url))
                 request.setHeader(
                     QNetworkRequest.ContentTypeHeader, "application/json")
@@ -770,19 +1252,25 @@ class AccountPage(QWidget):
         else:
             response_data = reply.readAll().data()
             response_text = response_data.decode('utf-8')
-            print(f"成功响应: {response_text}")
-
+            # print(f"成功响应: {response_text}")
             try:
-                json_response = json.loads(response_text)
-                success = json_response.get("success")
-                message = json_response.get("message")
-                username = json_response.get("username")
-                email = json_response.get("email")
-                qid = json_response.get("qid")
-                self.email_verified = json_response.get("email_verified")
-                api_key = json_response.get("api_key")
-                combo = json_response.get("combo")
-                type_ = json_response.get("type")
+                json_response: dict = json.loads(response_text)
+                success = json_response.get("success", False)
+                message = json_response.get("message", "")
+                username = json_response.get("username", "")
+                email = json_response.get("email", "")
+                qid = json_response.get("qid", "")
+                self.email_verified = json_response.get(
+                    "email_verified", False)
+                api_key = json_response.get("api_key", "")
+                combo = json_response.get("combo", "")
+                type_ = json_response.get("type", "")
+
+                if not type_:  # change avatar
+                    if message:
+                        info_show(
+                            self.tr("Profile picture updated successfully"), message, True)
+                    return
 
                 config = configer.read_config()["account"]
                 config["user"] = username
@@ -813,7 +1301,7 @@ class AccountPage(QWidget):
                     configer.revise_config("account", config)
                     info_show(self.tr("Login Successful"),
                               self.tr(message), True)
-
+                    self.logged = True
                     self.update_account_info(
                         username=username,
                         qid=qid,
@@ -821,9 +1309,13 @@ class AccountPage(QWidget):
                         combo=combo,
                         avatar_url=config.get("avatar_url")
                     )
+                    print(self.email_verified)
                     if not self.email_verified:
                         self.account_card.upgrade_btn.setText(
                             self.tr("Verify Email"))
+                    else:
+                        self.account_card.upgrade_btn.setText(
+                            self.tr("Upgrade"))
                 else:
                     if not success:
                         info_show(self.tr("Registration Failed"),
@@ -834,8 +1326,9 @@ class AccountPage(QWidget):
                     configer.revise_config("account", config)
                     info_show(self.tr("Registration Successful"),
                               self.tr("Registration successful! Please log in with your new account"), True)
-                    self.account_card.upgrade_btn.setText(
-                        self.tr("Verify Email"))
+                    self.logged = True
+                    # self.account_card.upgrade_btn.setText(
+                    #     self.tr("Verify Email"))
 
             except json.JSONDecodeError as e:
                 info_show(self.tr("Response Parse Failed"),
@@ -860,15 +1353,6 @@ class AccountPage(QWidget):
             position=InfoBarPosition.TOP, duration=2000, parent=self
         )
 
-    def show_upgrade_dialog(self):
-        InfoBar.info(
-            title=self.tr("Upgrade Account"),
-            content=self.tr(
-                "Account upgrade function is under development..."),
-            orient=Qt.Horizontal, isClosable=True,
-            position=InfoBarPosition.TOP, duration=2000, parent=self
-        )
-
     def update_data(self):
         for card in self.api_cards:
             increment = random.randint(1, 10)
@@ -889,3 +1373,9 @@ class AccountPage(QWidget):
         self.account_card.update_account_info(
             username=username, qid=qid, email=email, combo=combo, avatar_url=avatar_url
         )
+        if username:
+            # self.account_card.upgrade_btn.setText(self.tr("Upgrade"))
+            if hasattr(self, 'email_verified') and not self.email_verified:
+                self.account_card.upgrade_btn.setText(self.tr("Verify Email"))
+        else:
+            self.account_card.upgrade_btn.setText(self.tr("Login or Register"))

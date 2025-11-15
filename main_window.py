@@ -1466,10 +1466,12 @@ class Window(FramelessWindow):
             onClick=self._open_github,
             position=NavigationItemPosition.BOTTOM,
         )
+        avatar_url = config.get("account", {}).get(
+            "avatar_url") or resource_path('resource/icons/guest.png')
         self.navigationInterface.addWidget(
             routeKey='account',
             widget=NavigationAvatarWidget(
-                'Account', resource_path('resource/icons/avatar.jpg')),
+                'Account', avatar_url),
             onClick=lambda: (
                 self.switchTo(self.account_widget),
                 self.navigationInterface.setCurrentItem('account')
