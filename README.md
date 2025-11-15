@@ -16,6 +16,20 @@
 
 ## ✨ 功能特点
 
+### 🤖 AI 智能体接入
+
+#### 📋 侧边栏高级模式
+提供更强大的 Shell 辅助功能：
+- 请配置ChatGpt Api 或 Deepseek 等兼容Openai协议的模型
+- 支持自动读取服务器上文件
+- 支持自动捕获终端 多次自动进行指令 不需要多次下达指令
+- 支持修改文件内容(需要用户手动允许修改)
+- 支持联网/深度思考/引用服务器文件等
+- (还有很多powerful的运维功能请自行探索)
+![AI 侧边栏](https://github.com/user-attachments/assets/a8aff7f9-fbea-4d45-822d-8a82da08fae4)
+
+---
+
 ### 🎨 Win11 风格 UI  
 - 使用 QFluentWidgets 实现 Fluent Design 风格  
 - 支持亮/暗主题自动切换  (傻逼亮色 迟早删了)
@@ -65,19 +79,6 @@
 - 支持预设的导入导出与自动云同步
 ![指令本](https://github.com/user-attachments/assets/a38cb19d-5637-4621-a55f-ece6c08f2bde)
 
-
-
-### 🤖 AI 智能体接入
-
-#### 📋 侧边栏高级模式
-提供更强大的 Shell 辅助功能：
-- 请配置ChatGpt Api 或 Deepseek 等兼容Openai协议的模型
-- 支持自动读取服务器上文件
-- 支持自动捕获终端 多次自动进行指令 不需要多次下达指令
-- 支持修改文件内容(需要用户手动允许修改)
-- 支持联网/深度思考/引用服务器文件等
-- 
-![AI 侧边栏](https://github.com/user-attachments/assets/a8aff7f9-fbea-4d45-822d-8a82da08fae4)
 
 ---
 
