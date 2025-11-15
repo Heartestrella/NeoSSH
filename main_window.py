@@ -2104,7 +2104,7 @@ if __name__ == '__main__':
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         if has_chinese(script_dir):
-            update_splash_progress("路径包含中文拒绝启动")
+            pyi_splash.update_text("请勿运行在中文路径下")
         else:
             if len(sys.argv) > 1 and sys.argv[1] == '--update':
                 if pyi_splash:
