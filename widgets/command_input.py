@@ -493,14 +493,6 @@ class CommandInput(TextEdit):
         self.setTextCursor(cursor)
         self.setFocus()
 
-    def find_parent_with_llm(self):
-        parent = self.parent()
-        while parent is not None:
-            if hasattr(parent, "llm"):
-                return parent
-            parent = parent.parent()
-        return None
-
     def _on_partial_result(self, msg: str):
 
         self.partial_output += msg
@@ -555,15 +547,6 @@ class CommandInput(TextEdit):
                 is_loading=True
             )
             self.frame_index = (self.frame_index + 1) % len(self.frames)
-
-    def _generate(self):
-        text = self.toPlainText()
-        parent_widget = self.find_parent_with_llm()
-        self.timer.start(300)
-        parent_widget.llm.timer.start(15000)
-        if parent_widget:
-            parent_widget.llm.send_request(
-                parent_widget.ssh_widget.terminal_texts, text)
 
     def cleanup_history(self):
         try:

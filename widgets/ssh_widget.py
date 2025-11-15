@@ -13,10 +13,8 @@ from qfluentwidgets import SegmentedWidget, RoundMenu, Action, FluentIcon as FIF
 from widgets.system_info_dialog import SystemInfoDialog
 
 from tools.setting_config import SCM
-from tools.llm_helper import LLMHelper
 from widgets.ssh_webterm import WebTerminal
 from widgets.network_detaile import NetProcessMonitor
-from widgets.system_resources_widget import ProcessTable
 from widgets.task_widget import Tasks
 from widgets.file_tree_widget import File_Navigation_Bar, FileTreeWidget
 from widgets.files_widgets import FileExplorer
@@ -369,7 +367,7 @@ class SSHWidget(QWidget):
 
         self.command_input.setObjectName("command_input")
         self.command_input.setPlaceholderText(
-            self.tr("Shift+Enter for new line. Enter Alt to show history command. Ctrl+O to get AI suggestion (if open)"))
+            self.tr("Shift+Enter for new line. Enter Alt to show history command."))
         # self.command_input.setFixedHeight(32) # Remove fixed height
         self.command_input.setVerticalScrollBarPolicy(
             Qt.ScrollBarAlwaysOff)
@@ -540,16 +538,13 @@ class SSHWidget(QWidget):
             QTimer.singleShot(100, lambda: self._restore_splitter_sizes(
                 self.rsplitter, splitter_tb_ratio))
 
-        if use_ai:
-            self.handle_concent()
-
         # Apply theme color to splitter on initialization
         theme_color_info = config.get("bg_theme_color")
         if theme_color_info:
             initial_color = theme_color_info
         else:
             initial_color = '#cccccc'
-        self.update_splitter_color(initial_color)
+        self.update_splitter_color('#cccccc')
 
     def start_loading_animation(self, key: str):
         if key not in self.file_bar.pivot.items:
@@ -1012,12 +1007,6 @@ class SSHWidget(QWidget):
             self.splitter_lr.blockSignals(True)
             self.splitter_lr.setSizes([left_width, right_width])
             self.splitter_lr.blockSignals(False)
-
-    def handle_concent(self):
-        self.llm = LLMHelper()
-        self.llm.result_signal.connect(self.command_input._on_partial_result)
-        self.llm.error_signal.connect(self.command_input.suggestion_error)
-        self.llm.finished_signal.connect(self.command_input.clear_out)
 
     def execute_command_and_capture(self, command: str):
         if self.ssh_widget:

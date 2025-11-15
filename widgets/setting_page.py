@@ -12,13 +12,12 @@ from PyQt5.QtWidgets import (
 from qfluentwidgets import (
     FluentIcon, ComboBoxSettingCard, OptionsConfigItem, SearchLineEdit, ScrollArea,
     SwitchSettingCard, PushSettingCard, QConfig, InfoBar, InfoBarPosition,
-    LineEdit, RangeConfigItem, RangeValidator, RangeSettingCard, ExpandGroupSettingCard, BodyLabel, ComboBox, SwitchButton, IndicatorPosition,
+    LineEdit, RangeConfigItem, RangeValidator, RangeSettingCard,
     OptionsValidator, ColorDialog, SettingCard
 )
 
 from tools.font_config import font_config
 from tools.setting_config import SCM
-from tools.image_color_extractor import ImageColorExtractor
 
 
 logger = logging.getLogger(__name__)
@@ -82,59 +81,6 @@ class Config(QConfig):
         OptionsValidator(["none", "stable", "insider"]),
         restart=False
     )
-
-
-class aigc_config(ExpandGroupSettingCard):
-
-    def __init__(self, parent=None):
-        super().__init__(
-            FluentIcon.EDIT,
-            "AI Model API Settings",
-        )
-
-        self.open_switch = BodyLabel(self.tr("Enable AI Model"))
-        self.open_switchButton = SwitchButton(
-            "Close", self, IndicatorPosition.RIGHT)
-        self.open_switchButton.setOnText("Open")
-
-        self.ModelLabel = BodyLabel(self.tr("AI Model API selection"))
-        self.ModelComboBox = ComboBox()
-        self.ModelComboBox.addItems(["ChatGPT", "DeepSeek", "Local ollama"])
-        self.ModelComboBox.setCurrentIndex(1)
-
-        self.ApiLabel = BodyLabel(self.tr("API Key"))
-        self.ApiEdit = LineEdit()
-        self.ApiEdit.setPlaceholderText(
-            self.tr("Please enter your API key here"))
-        self.ApiEdit.setClearButtonEnabled(True)
-
-        self.Max_length = BodyLabel(self.tr("Max length of history messages"))
-        self.Max_lengthEdit = LineEdit()
-        self.Max_lengthEdit.setPlaceholderText(
-            self.tr("1-100,the larger the number, the more tokens are consumed"))
-        self.Max_lengthEdit.setValidator(QIntValidator(1, 2147483647))
-
-        self.viewLayout.setContentsMargins(0, 0, 0, 0)
-        self.viewLayout.setSpacing(0)
-
-        self.add_row(self.open_switch, self.open_switchButton)
-        self.add_row(self.ModelLabel, self.ModelComboBox)
-        self.add_row(self.ApiLabel, self.ApiEdit)
-        self.add_row(self.Max_length, self.Max_lengthEdit)
-
-    def add_row(self, label, widget):
-        w = QWidget()
-        w.setFixedHeight(60)
-
-        layout = QHBoxLayout(w)
-        layout.setContentsMargins(48, 12, 48, 12)
-        layout.setSpacing(10)
-
-        layout.addWidget(label)
-        layout.addStretch(1)
-        layout.addWidget(widget)
-
-        self.addGroupWidget(w)
 
 
 class FontSelectorDialog(QDialog):
@@ -435,31 +381,6 @@ class FontSelectorDialog(QDialog):
         self.reject()
 
 
-class ColorExtractionWorker(QThread):
-    finished = pyqtSignal(dict)
-    error = pyqtSignal(str)
-
-    def __init__(self, image_path: str, num_colors: int = 5):
-        super().__init__()
-        self.image_path = image_path
-        self.num_colors = num_colors
-
-    def run(self):
-        try:
-            from tools.image_color_extractor import ImageColorExtractor
-            extractor = ImageColorExtractor()
-            color_info = extractor.get_color_info(
-                self.image_path, self.num_colors)
-            if color_info:
-                self.finished.emit(color_info)
-            else:
-                self.error.emit("无法提取颜色信息")
-        except ImportError as e:
-            self.error.emit(f"缺少必要的库: {str(e)}")
-        except Exception as e:
-            self.error.emit(f"提取颜色时出错: {str(e)}")
-
-
 class SettingPage(ScrollArea):
     themeChanged = pyqtSignal(str)
     themeColorChanged = pyqtSignal(str)  # Signal to emit the new theme color
@@ -534,24 +455,6 @@ class SettingPage(ScrollArea):
         layout.addWidget(self.update_channel_card)
         self._register_searchable(self.update_channel_card, self.tr("Update Channel"),
                                   ["update", "channel", "stable", "insider", "更新", "渠道"])
-
-        self.aigc = aigc_config()
-        self.aigc.open_switchButton.checkedChanged.connect(
-            lambda checked: configer.revise_config("aigc_open", checked))
-        self.aigc.ModelComboBox.currentIndexChanged.connect(lambda index: configer.revise_config(
-            "aigc_model", self.aigc.ModelComboBox.currentText()))
-        self.aigc.ApiEdit.textEdited.connect(
-            lambda text: configer.revise_config("aigc_api_key", text.strip()))
-
-        self.aigc.Max_lengthEdit.editingFinished.connect(
-            lambda: print("Max length changed"))
-        self.aigc.Max_lengthEdit.editingFinished.connect(
-            self.check_max_length_and_save)
-        layout.addWidget(self.aigc)
-        _register_searchable = self._register_searchable
-        _register_searchable(self.aigc, "AI Model API Settings", [
-            "AI", "Model", "API", "Settings", "ChatGPT", "DeepSeek", "Ollama", "Local"
-        ])
 
         self.right_panel_ai_chat_card = SwitchSettingCard(
             icon=FluentIcon.CHAT,
@@ -920,23 +823,6 @@ class SettingPage(ScrollArea):
         else:
             return 0
 
-    def check_max_length_and_save(self):
-        text = self.aigc.Max_lengthEdit.text()
-        # print("editingFinished text:", text)
-        if text.isdigit():
-            value = int(text)
-            if value > 100:
-                self.aigc.Max_lengthEdit.setText("100")
-            elif value < 1:
-                self.aigc.Max_lengthEdit.setText("1")
-        else:
-            self.aigc.Max_lengthEdit.setText("10")
-
-        configer.revise_config(
-            "aigc_history_max_length",
-            int(self.aigc.Max_lengthEdit.text())
-        )
-
     def _restore_saved_settings(self):
 
         # Change interface value
@@ -961,16 +847,6 @@ class SettingPage(ScrollArea):
         self._restore_background_opacity(self.config["background_opacity"])
         self._set_window_size(
             (self.config["window_last_width"], self.config["window_last_height"]))
-        self.aigc.open_switchButton.setChecked(
-            self.config.get("aigc_open", False))
-        self.right_panel_ai_chat_card.setChecked(
-            self.config.get("right_panel_ai_chat", True))
-        self.aigc.ModelComboBox.setCurrentIndex(
-            llm_models[self.config.get("aigc_model", "DeepSeek")])
-        self.aigc.ApiEdit.setText(self.config.get("aigc_api_key", ""))
-
-        self.aigc.Max_lengthEdit.setText(
-            str(self.config.get("aigc_max_length", 10)))
 
         animation_map = {
             "slide_fade": 0, "zoom_in": 1, "zoom_out": 2, "cross_fade": 3,
@@ -1042,40 +918,6 @@ class SettingPage(ScrollArea):
         else:
             configer.revise_config("bg_pic", path)
             self.parent_class.set_global_background(path)
-            self._extract_and_save_theme_colors(path)
-
-    def _extract_and_save_theme_colors(self, image_path: str):
-        self._color_worker = ColorExtractionWorker(image_path, num_colors=5)
-        self._color_worker.finished.connect(self._on_color_extraction_finished)
-        self._color_worker.error.connect(self._on_color_extraction_error)
-        self._color_worker.start()
-
-    def _on_color_extraction_finished(self, color_info: dict):
-        try:
-            dominant_hex = color_info['dominant_color']['hex']
-            configer.revise_config("bg_theme_color", dominant_hex)
-            self.themeColorChanged.emit(dominant_hex)
-        except Exception as e:
-            pass
-        finally:
-            self._color_worker.deleteLater()
-
-    def _on_color_extraction_error(self, error_msg: str):
-        if "缺少必要的库" in error_msg or "ImportError" in error_msg:
-            content = self.tr(
-                'Please install required libraries:\npip install Pillow scikit-learn numpy')
-        else:
-            content = error_msg
-        InfoBar.warning(
-            title=self.tr('Color extraction failed'),
-            content=content,
-            orient=Qt.Vertical,
-            isClosable=True,
-            position=InfoBarPosition.TOP_RIGHT,
-            duration=5000,
-            parent=self
-        )
-        self._color_worker.deleteLater()
 
     def _save_external_editor(self):
         path = self.external_editor_edit.text().strip()

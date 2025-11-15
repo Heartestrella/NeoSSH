@@ -2105,6 +2105,15 @@ if __name__ == '__main__':
         script_dir = os.path.dirname(os.path.abspath(__file__))
         if has_chinese(script_dir):
             pyi_splash.update_text("请勿运行在中文路径下")
+            app = QApplication(sys.argv)
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText("路径错误")
+            msg.setInformativeText("程序不能在包含中文的路径下运行，请将程序移动到英文目录。")
+            msg.setWindowTitle("启动失败")
+            if msg.exec_():
+                sys.exit(1)
+            # time.sleep(30000)
         else:
             if len(sys.argv) > 1 and sys.argv[1] == '--update':
                 if pyi_splash:
