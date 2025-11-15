@@ -1022,3 +1022,10 @@ class SSHWidget(QWidget):
     def execute_command_and_capture(self, command: str):
         if self.ssh_widget:
             self.ssh_widget.execute_command_and_capture(command)
+
+    def keyPressEvent(self, event):
+        # Alt 切换历史
+        if event.key() == Qt.Key_Alt:
+            self.command_input.toggle_history()
+            return
+        super().keyPressEvent(event)

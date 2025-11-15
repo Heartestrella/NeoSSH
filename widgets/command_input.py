@@ -404,17 +404,13 @@ class CommandInput(TextEdit):
                 self._on_history_index_activated()
                 return
 
-        # Alt 切换历史
-        if event.key() == Qt.Key_Alt:
-            self.toggle_history()
-            return
+        # 已经废弃该Agent功能
+        # if event.key() == Qt.Key_O and event.modifiers() == Qt.ControlModifier:
 
-        if event.key() == Qt.Key_O and event.modifiers() == Qt.ControlModifier:
-
-            print("pressed Alt+O")
-            if self.use_ai:
-                self._generate()
-                return
+        #     print("pressed Alt+O")
+        #     if self.use_ai:
+        #         self._generate()
+        #         return
 
         if event.key() == Qt.Key_Tab and self.suggestionpopup.isVisible():
             # accept suggestion

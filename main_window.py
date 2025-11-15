@@ -2101,84 +2101,92 @@ def has_chinese(text):
 
 
 if __name__ == '__main__':
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    if has_chinese(script_dir):
-        update_splash_progress("路径包含中文拒绝启动")
-    else:
-        if len(sys.argv) > 1 and sys.argv[1] == '--update':
-            if pyi_splash:
-                pyi_splash.close()
-            from tools.updater import main as updater_main
-            updater_args = [sys.argv[0]] + sys.argv[2:]
-            sys.argv = updater_args
-            updater_main()
-            sys.exit(0)
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if has_chinese(script_dir):
+            update_splash_progress("路径包含中文拒绝启动")
+        else:
+            if len(sys.argv) > 1 and sys.argv[1] == '--update':
+                if pyi_splash:
+                    pyi_splash.close()
+                from tools.updater import main as updater_main
+                updater_args = [sys.argv[0]] + sys.argv[2:]
+                sys.argv = updater_args
+                updater_main()
+                sys.exit(0)
 
-        if check_for_update_lock_and_recover():
-            sys.exit()
-        config_dir = Path.home() / ".config" / "pyqt-ssh"
-        config_path = config_dir / "qfluentwidgets_config.json"
-        qconfig.load(config_path)
-        try:
-            # 步骤1: 初始化日志
-            update_splash_progress(1, 8, "初始化日志系统")
-            configer = SCM()
-            setup_global_logging()
-
-            # 步骤2: 设置DPI
-            update_splash_progress(2, 8, "设置高DPI支持")
-            QApplication.setHighDpiScaleFactorRoundingPolicy(
-                Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-            QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-
-            app = QApplication(sys.argv)
-            # 步骤3: 设置应用属性
-            update_splash_progress(3, 8, "设置应用属性")
+            if check_for_update_lock_and_recover():
+                sys.exit()
+            config_dir = Path.home() / ".config" / "pyqt-ssh"
+            config_path = config_dir / "qfluentwidgets_config.json"
+            qconfig.load(config_path)
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                    "su8aru.remmotessh.1.0.0")
-            except:
-                pass
+                # 步骤1: 初始化日志
+                update_splash_progress(1, 8, "初始化日志系统")
+                configer = SCM()
+                setup_global_logging()
 
-            # 步骤4: 加载配置
-            update_splash_progress(4, 8, "加载配置文件")
-            config = configer.read_config()
-            lang = language_code_to_locale(config.get("language", "system"))
+                # 步骤2: 设置DPI
+                update_splash_progress(2, 8, "设置高DPI支持")
+                QApplication.setHighDpiScaleFactorRoundingPolicy(
+                    Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+                QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 
-            # 步骤5: 设置语言
-            update_splash_progress(5, 8, "设置语言环境")
-            translator = QTranslator()
-            translator_1 = FluentTranslator()
-            if lang != "en_US":
-                translator.load(resource_path(f"resource/i18n/app_{lang}.qm"))
-                app.installTranslator(translator)
-            app.installTranslator(translator_1)
-
-            # 步骤6: 初始化组件
-            update_splash_progress(6, 8, "初始化组件")
-
-            # 步骤7: 创建主窗口
-            update_splash_progress(7, 8, "准备主界面")
-            w = Window()
-
-            # 步骤8: 完成，关闭启动画面
-            update_splash_progress(8, 8, "启动完成")
-            if pyi_splash:
-                pyi_splash.close()
-
-            w.show()
-            app.exec_()
-
-            # Clean up the edit directory on exit
-            main_logger.info(" cleaning up tmp/edit directory...")
-            edit_tmp_dir = "tmp/edit"
-            if os.path.exists(edit_tmp_dir):
+                app = QApplication(sys.argv)
+                # 步骤3: 设置应用属性
+                update_splash_progress(3, 8, "设置应用属性")
                 try:
-                    shutil.rmtree(edit_tmp_dir)
-                    main_logger.info(
-                        f"Successfully cleaned up {edit_tmp_dir}.")
-                except Exception as e:
-                    main_logger.error(f"Error cleaning up {edit_tmp_dir}: {e}")
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                        "su8aru.remmotessh.1.0.0")
+                except:
+                    pass
 
-        except Exception as e:
-            main_logger.critical("Application startup failure", exc_info=True)
+                # 步骤4: 加载配置
+                update_splash_progress(4, 8, "加载配置文件")
+                config = configer.read_config()
+                lang = language_code_to_locale(
+                    config.get("language", "system"))
+
+                # 步骤5: 设置语言
+                update_splash_progress(5, 8, "设置语言环境")
+                translator = QTranslator()
+                translator_1 = FluentTranslator()
+                if lang != "en_US":
+                    translator.load(resource_path(
+                        f"resource/i18n/app_{lang}.qm"))
+                    app.installTranslator(translator)
+                app.installTranslator(translator_1)
+
+                # 步骤6: 初始化组件
+                update_splash_progress(6, 8, "初始化组件")
+
+                # 步骤7: 创建主窗口
+                update_splash_progress(7, 8, "准备主界面")
+                w = Window()
+
+                # 步骤8: 完成，关闭启动画面
+                update_splash_progress(8, 8, "启动完成")
+                if pyi_splash:
+                    pyi_splash.close()
+
+                w.show()
+                app.exec_()
+
+                # Clean up the edit directory on exit
+                main_logger.info(" cleaning up tmp/edit directory...")
+                edit_tmp_dir = "tmp/edit"
+                if os.path.exists(edit_tmp_dir):
+                    try:
+                        shutil.rmtree(edit_tmp_dir)
+                        main_logger.info(
+                            f"Successfully cleaned up {edit_tmp_dir}.")
+                    except Exception as e:
+                        main_logger.error(
+                            f"Error cleaning up {edit_tmp_dir}: {e}")
+
+            except Exception as e:
+                main_logger.critical(
+                    "Application startup failure", exc_info=True)
+    except Exception as e:
+        print(e)
+        input()
