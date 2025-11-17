@@ -172,4 +172,4 @@ sudo apt install -y ss lsblk iostat
 
 ---
 
-**💙 PSSH — A Fluent, Elegant SSH Experience**
+**💙 NeoSSH — A Fluent, Elegant SSH Experience**

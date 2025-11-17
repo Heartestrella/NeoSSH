@@ -1,82 +1,90 @@
-## [English Documentation](README.md)
+# [中文文档](README.md)
 
+# ⚠ Do NOT run in paths containing Chinese characters!!!
 
-# 🖥️ PSSH — Win11 Style SSH Terminal
+# 🖥️ NeoSSH — A Next-Gen Win11-Styled SSH Terminal
 
-A cross-platform SSH client built with **[PyQt](https://riverbankcomputing.com/software/pyqt/intro)** and **[QFluentWidgets](https://qfluentwidgets.com/)**,  
-featuring a **Windows 11 Fluent Design** interface.
+A cross-platform SSH client developed based on **[PyQt](https://riverbankcomputing.com/software/pyqt/intro)** and **[QFluentWidgets](https://qfluentwidgets.com/)**.  
+Its interface follows the **Windows 11 Fluent Design** style.
 
-Includes a **remote file manager** and an **integrated terminal**, providing a modern, elegant, and efficient remote management experience.
+Built-in **Remote File Manager** and **Integrated Terminal**, providing a modern, elegant, and efficient remote management experience.
 
-> 💡 Please read this file carefully — most common issues are already covered here.
+> 💡 Please read this document first. Most common questions can be answered here.
 
 ---
 
 ## ✨ Features
 
-### 🎨 Win11 Fluent Design UI  
-- Built with QFluentWidgets  
-- Supports light/dark theme switching  
+### 🤖 AI Agent Integration
+
+#### 📋 Sidebar Advanced Mode
+Provides more powerful Shell assistance features:
+- Configure ChatGPT API or Deepseek, etc. (models compatible with the OpenAI protocol)
+- Supports automatic reading of files on the server
+- Supports automatic capture of terminal commands, allowing multiple automatic commands without repeated instructions
+- Supports modifying file content (requires manual user approval for modifications)
+- Supports internet access / deep thinking / referencing server files, etc.
+- (Many more powerful O&M features - explore them yourself!)
+![AI Sidebar](https://github.com/user-attachments/assets/a8aff7f9-fbea-4d45-822d-8a82da08fae4)
 
 ---
 
-### 🖥 SSH Terminal  
-Based on `xterm.js` and `QWebEngineView`, supporting:
-- Full command-line interaction  
-- Command history reuse  
-- AI-assisted command input (currently supports **DeepSeek**)  
-- Adjustable font size and color scheme  
-- Supports connecting to the target server via a saved jumpbox server (may be useful in special network environments or other requirements)
----
-
-### 📂 Remote File Manager  
-- Upload / Download  
-- Rename / Delete / Change permissions  
-- Windows Explorer–like interface  
-- Icon view and list view supported  
-- Real-time progress display  
-
-![File Manager Example](https://github.com/user-attachments/assets/e386c2b1-8283-4362-bd28-207b613cb15f)
-![Detailed View Example](https://github.com/user-attachments/assets/86af85be-661f-4a03-8bde-5687ea4a61b4)
+### 🎨 Win11 Style UI
+- Implements Fluent Design style using QFluentWidgets
+- Supports light/dark theme auto-switching (Damn light theme, will delete it eventually)
 
 ---
 
-### ⚡ Multi-Session Management  
-- Connect to multiple hosts simultaneously  
-- Quickly switch between sessions  
-- Duplicate or close sessions easily  
+### 🖥 SSH Terminal
+Implemented based on `xterm.js` and `QWebEngineView`, supports:
+- Command-line interaction
+- Command history reuse
+- Integrated AI Agent
+- Adjustable fonts and color schemes
+- Connect to target servers via saved Jumpbox servers (useful for special network environments or other needs)
+- Built-in file editor (~~Mini IDEA?~~)
 
 ---
 
-### 🛜 Network & Process Monitor  
-- View and manage network/system processes  
-- Monitor upload/download progress with cancel option  
-- Check network status (Doing)
-![Process Management Example](https://github.com/user-attachments/assets/c4fb44cf-910c-412b-b4a8-0e8d32c465b6)
+### 📂 Remote File Manager
+- File upload / download
+- File rename / delete / permission modification
+- Interaction experience similar to Windows File Explorer
+- Icon / List view for files
+- Real-time progress and status feedback
+
+![File Manager Example](https://github.com/user-attachments/assets/19b585f9-06b3-4b84-ae4a-9d50d6281d9b)
+![Detailed View Example](https://github.com/user-attachments/assets/d5ce4196-a958-4b22-9540-6485143c79ef)
 
 ---
 
-### 🤖 AI Integration
+### ⚡ Multi-Session Management
+- Supports simultaneous connections to multiple remote hosts
+- Quick switching between different sessions
+- Supports direct session copying / closing
 
-#### ✨ Quick Input Mode  
-After enabling and configuring your AI key in settings:
-- Type a natural-language instruction in the input box  
-- Press **Ctrl + O** to call the AI assistant  
-- Press **Tab** to accept the generated command  
+---
 
-![AI Quick Mode](https://github.com/user-attachments/assets/ab2aeb36-76cf-4bf5-b626-fdaf9121a717)
+### 🛜 Network & System Process Management
+- Supports viewing and managing network and system processes
+- Displays file upload/download progress with the ability to cancel operations
+- Multi-NIC speed viewing
+- View network status (Doing)
+![Process Management Example](https://github.com/user-attachments/assets/0e85ffb9-dde6-4108-a492-aa059599c18a)
 
-#### 📋 Sidebar Advanced Mode  
-Provides more powerful shell assistance and context-aware suggestions.
-- Please configure ChatGpt Api or Deepseek or other models compatible with OpenAI protocol
-![AI Sidebar](https://github.com/user-attachments/assets/777c658b-1ac4-4742-9e65-6832b76157cd)
+---
+
+### Command Book (Translation errors exist during localization)
+- Supports preset custom commands for one-click execution
+- Supports import/export of presets and automatic cloud sync
+![Command Book](https://github.com/user-attachments/assets/a38cb19d-5637-4621-a55f-ece6c08f2bde)
 
 ---
 
 ## 🚀 How to Run
 
-### Run from Source
-1. Make sure you have **Python 3.8+**
+### Run from Source Code
+1. Ensure Python 3.8+ is installed
 2. Install dependencies:
    ```bash
    pip install -r requirements.txt
@@ -88,83 +96,80 @@ Provides more powerful shell assistance and context-aware suggestions.
 
 ---
 
-### Run Precompiled Version
-1. Download the latest release from the **[Releases Page](https://github.com/Heartestrella/P-SSH/releases)**  
-2. Extract the archive  
-3. Run the executable directly  
+### Running from Precompiled Version
+1. Download the latest version from the **[Releases page](https://github.com/Heartestrella/P-SSH/releases)**
+2. Extract the archive
+3. Run the executable file
 
-> ✅ **System Requirement:** Windows 10 or later
-
----
-
-## 📷 Screenshots
-
-![Main Window](https://github.com/user-attachments/assets/2c99f305-65ef-4af2-affe-5b7d0d902d55)
-![Connection Panel](https://github.com/user-attachments/assets/94ed1648-f667-4434-b891-80018a70e618)
+> ✅ System Requirements: Windows 10 or higher
 
 ---
 
-## 🌐 Internationalization (i18n)
+## 📷 Interface Screenshots
 
-Currently supports **English** and **Chinese** only.  
-A complete multilingual system will be introduced in future releases.
-
-> ⚠️ **About Translation**
-> - Most UI text is marked with `tr()` for localization  
-> - A few tooltips remain untranslated  
-> - This will be refined in future updates  
+![Main Interface](https://github.com/user-attachments/assets/1759ad08-e630-415c-bc5e-3624c61f1367)
+![Settings Page](https://github.com/user-attachments/assets/836500b3-30fb-4a4f-9899-d3a0db7dd07f)
 
 ---
 
-## 📝 Source Code Notes
+## 🌐 Multilingual Internationalization (i18n)
+
+Currently supports only **Chinese / English**.
+
+> ⚠️ **About Chinese Localization**
+> - Localization is updated once per major version
+> - Main UI uses `tr()` markers for translation
+> - A few tips and messages are not fully translated
+> - Future versions will improve language consistency
+
+---
+
+## 📝 Source Code Information
 
 PSSH is still under active development:
-- Code structure is being refactored and cleaned  
-- Some components were AI-assisted  
-- Documentation and comments are being improved  
+- Code structure is being organized and refactored
+- Some modules are assisted by AI tools
+- Comments are being added and refined
 
 ---
 
-## ⚠️ Known Issues & Tips
+## ⚠️ Known Issues and Usage Notes
 
-### 🧭 Usage Tips
-- After enabling AI, type a natural language command in the input box  
-  → Press **Ctrl + O** to generate commands  
-  → Press **Tab** to accept the suggestion  
-- To close a tab in the built-in editor, **double-click** the tab title.  
+### 🧭 Tips for Use
+- To close tabs in the built-in editor, **double-click the tab title**.
 
 ---
 
 ### 🧩 Dependencies
-If the **left sidebar** information is missing, make sure these commands are installed on your remote system:
+If the left sidebar functions do not work, please install the following commands on the remote host:
 ```bash
 sudo apt install -y ss lsblk iostat
 ```
-If you still have problems, please submit this bug
-(Use your package manager if not on Debian/Ubuntu)
+(Use the corresponding package manager for different distributions)
+If issues persist, please submit a bug report
+(This function may be incompatible with some hosts; future versions may replace the script with an executable)
 
 ---
 
-### 🪟 Other Notes
-- Due to issues with WebEngine, the software experiences lag when dragging.
-- If fonts display incorrectly, ensure the font is installed on your system  
-- Some minor style mismatches may appear in specific themes  
+### 🪟 Other Issues
+- Due to Webengine limitations, the software may lag when dragging
+- If fonts display incorrectly, ensure the appropriate fonts are installed on your system
+- Some UI element styles may slightly differ under certain themes
 
 ---
 
-## 🔮 Future Development
+## 🔮 Future Development Directions
 
-- ✅ Full Python-based terminal rendering (remove xterm.js dependency)  
-- 🧠 Enhanced AI-assisted Shell operations  
-- 🌍 Extended multi-language and theming support  
-- 🧱 Plugin-based extensibility  
-
----
-
-> ⚠️ **Beta Notice:**  
-> If you encounter bugs, please submit an issue with logs and reproduction steps to [GitHub Issues](https://github.com/Heartestrella/P-SSH/issues).  
-> Pull requests are welcome — all submissions will be reviewed within **3 days**.
+- ✅ Fully Python-based terminal rendering
+  Current terminal depends on `xterm.js`; future plans include a pure PyQt rendering solution
+- 🧱 Plugin-based extension architecture
 
 ---
 
-**💙 PSSH — A Fluent, Elegant SSH Experience**
+> ⚠️ **Beta Version Note**
+> If you encounter any bugs, please submit them to [GitHub Issues](https://github.com/Heartestrella/P-SSH/issues) along with logs and reproduction steps
+> PR contributions are welcome and will be reviewed within **3 days**.
+
+---
+
+**💙 NeoSSH — A Fluent, Elegant SSH Experience**
