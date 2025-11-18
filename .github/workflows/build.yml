@@ -130,14 +130,7 @@ jobs:
         run: |
           echo "=== 开始 Windows 调试测试 ==="
           echo "等待程序启动并输出调试信息..."
-          powershell -Command "
-            \$process = Start-Process -FilePath 'dist\NeoSSH-Debug.exe' -PassThru
-            \$exited = \$process.WaitForExit(60000)  # 60秒超时
-            if (!\$exited) {
-              \$process.Kill()
-              echo '程序超时已被终止'
-            }
-          "
+          powershell -Command "Start-Process -Wait -NoNewWindow -Timeout 60 -FilePath 'dist\NeoSSH-Debug.exe'"
           echo "=== Windows 调试测试结束 ==="
 
       - name: 运行调试测试 (Linux)
