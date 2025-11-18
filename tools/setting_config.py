@@ -13,11 +13,51 @@ class SCM:
             os.makedirs(config_dir)
 
         self.default_config = {
-            # ... 您的默认配置 ...
             "bg_color": "Dark",
-            "bg_pic": None,
-            "font_size": 12,
-            # ... 其他配置 ...
+            "bg_pic": "",
+            "font_size": "12",
+            "locked_ratio": True,
+            "ssh_widget_text_color": "#08ff98",
+            "background_opacity": 35,
+            "window_last_width": 1615,
+            "window_last_height": 778,
+            "follow_cd": False,
+            "language": "system",
+            "default_view": "icon",
+            "max_concurrent_transfers": 10,
+            "compress_upload": False,
+            "splitter_lr_ratio": [
+                0.2,
+                0.8
+            ],
+            "splitter_tb_ratio": [
+                0.5206786850477201,
+                0.47932131495228
+            ],
+            "maximized": True,
+            "aigc_api_key": "",
+            "aigc_open": True,
+            "aigc_model": "DeepSeek",
+            "aigc_history_max_length": 10,
+            "splitter_left_components": [
+                0.6127527216174183,
+                0.38724727838258166
+            ],
+            "open_mode": False,
+            "external_editor": "",
+            "editor_auto_save_on_focus_lost": True,
+            "splitter_sizes": [
+                1466,
+                406
+            ],
+            "splitter_lr_left_width": 358,
+            "bg_theme_color": None,
+            "side_panel_last_width": 263,
+            "page_animation": "slide_fade",
+            "right_panel_ai_chat": True,
+            "file_tree_single_click": False,
+            "update_channel": "none",
+            "ai_chat_model": "",
             "account": {
                 "user": "Guest",
                 "avatar_url": r"resource\icons\guest.png",
