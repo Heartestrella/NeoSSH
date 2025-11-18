@@ -130,7 +130,9 @@ jobs:
         run: |
           echo "=== 开始 Windows 调试测试 ==="
           echo "等待程序启动并输出调试信息..."
-          powershell -Command "Start-Process -Wait -NoNewWindow -Timeout 60 -FilePath 'dist\NeoSSH-Debug.exe'"
+          echo "正在启动调试程序..."
+          dist\NeoSSH-Debug.exe
+          echo "程序运行完成"
           echo "=== Windows 调试测试结束 ==="
 
       - name: 运行调试测试 (Linux)
