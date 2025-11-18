@@ -1,5 +1,5 @@
 
-from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy,
+from PyQt5.QtWidgets import (QApplication, QWidget, QLayout, QSizePolicy, QLabel,
                              QRubberBand,  QVBoxLayout, QTableView, QHeaderView, QAbstractItemDelegate, QStyledItemDelegate, QStyle, QFileDialog)
 from PyQt5.QtGui import QFont, QPainter, QColor, QStandardItemModel, QStandardItem
 from PyQt5.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
@@ -696,6 +696,20 @@ class FileExplorer(QWidget):
         self.path = path
         self._is_loading = False
 
+        self.label = QLabel(
+            self.tr("The directory is empty or does not exist"))
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setWordWrap(True)
+
+        font = self.label.font()
+        font.setPointSize(40)
+        font.setBold(True)
+        self.label.setFont(font)
+
+        self.label.setStyleSheet("QLabel { color: red; }")
+        self.label.setMinimumSize(400, 100)
+        self.label.hide()
+
         # Icon view
         self.scroll_area = ScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
@@ -711,6 +725,7 @@ class FileExplorer(QWidget):
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(self.label)
         main_layout.addWidget(self.scroll_area)
         main_layout.addWidget(self.details.details_view)
         self.setLayout(main_layout)
@@ -895,6 +910,20 @@ class FileExplorer(QWidget):
         # Refresh the view with current files
         self.refresh_action.emit()
 
+    def _clear_all_items(self):
+
+        if self.view_mode == "icon":
+            while self.flow_layout.count():
+                item = self.flow_layout.takeAt(0)
+                if item and item.widget():
+                    item.widget().deleteLater()
+            self.selected_items.clear()
+
+        else:
+            self.details.details_model.removeRows(
+                0, self.details.details_model.rowCount())
+            self.details.details_view.selectionModel().clearSelection()
+
     def add_files(self, files, clear_old=True):
         """
     Accepts:
@@ -903,9 +932,18 @@ class FileExplorer(QWidget):
     - list of tuples: [("name", True), ...]
     Sorts directories first, files last, in ascending order by name (case-insensitive).
         """
+        if clear_old:
+            self._clear_all_items()
+        if not files:
+            self._clear_all_items()
+            self.label.show()
+            self.label.raise_()
+            return
+        else:
+            self.label.hide()
         start_time = time.perf_counter()
         if self.view_mode == "icon":
-            self._add_files_to_icon_view(files, clear_old)
+            self._add_files_to_icon_view(files, False)
         else:
             self.details._add_files_to_details_view(files, clear_old)
         self._is_loading = False
