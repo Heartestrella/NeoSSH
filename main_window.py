@@ -65,8 +65,8 @@ mime_types = [
 
 def isDebugMode():
     """Check if the application is running under a debugger."""
-    return True
-    # return sys.gettrace() is not None
+    # return True
+    return sys.gettrace() is not None
 
 
 class PermissionDialog(MessageBoxBase):
@@ -337,6 +337,8 @@ class Window(FramelessWindow):
         # self.switchTo(self.MainInterface)
         self.checker = CheckUpdate()
         self.checker.start()
+        if isDebugMode():
+            print("\\\\ Debuger Done \\\\")
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
@@ -2104,6 +2106,8 @@ def has_chinese(text):
 
 if __name__ == '__main__':
     try:
+        if isDebugMode():
+            print("\\\\ Debuger Software Starting \\\\")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         if has_chinese(script_dir):
             pyi_splash.update_text("请勿运行在中文路径下")
@@ -2179,7 +2183,8 @@ if __name__ == '__main__':
                 update_splash_progress(8, 8, "启动完成")
                 if pyi_splash:
                     pyi_splash.close()
-
+                if isDebugMode():
+                    print("\\\\ Debuger Software Starting Done \\\\")
                 w.show()
                 app.exec_()
 
