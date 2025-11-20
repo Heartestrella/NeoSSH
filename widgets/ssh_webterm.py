@@ -35,6 +35,7 @@ import re
 import os
 from PyQt5.QtWidgets import QShortcut
 from PyQt5.QtGui import QKeySequence
+from tools.atool import resource_path
 print("QT_VERSION:", qc.QT_VERSION_STR, "PYQT:", qc.PYQT_VERSION_STR)
 
 configer = SCM()
@@ -452,12 +453,13 @@ class WebTerminal(QWidget):
         Return the HTML string used as the web page for the terminal.
         """
         try:
-            # 获取当前脚本所在的目录
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            # 拼接正确的模板文件路径
-            tpl_path = os.path.join(
-                current_dir, '..', 'resource', 'tpl', 'terminal.tpl')
-
+            # # 获取当前脚本所在的目录
+            # current_dir = os.path.dirname(os.path.abspath(__file__))
+            # # 拼接正确的模板文件路径
+            # tpl_path = os.path.join(
+            #     current_dir, '..', 'resource', 'tpl', 'terminal.tpl')
+            tpl_path = resource_path(os.path.join(
+                "resource", "tpl", "terminal.tpl"))
             with open(tpl_path, 'r', encoding='utf-8') as f:
                 tpl = f.read()
         except Exception as e:
