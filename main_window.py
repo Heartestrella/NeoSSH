@@ -1389,10 +1389,11 @@ class Window(FramelessWindow):
         super().resizeEvent(event)
 
     def eventFilter(self, obj, event):
-        handle = self.mainSplitter.handle(1)
-        if handle and obj == handle:
-            if event.type() == QEvent.MouseButtonRelease:
-                self._save_main_splitter_state()
+        if hasattr(self, 'mainSplitter') and self.mainSplitter:
+            handle = self.mainSplitter.handle(1)
+            if handle and obj == handle:
+                if event.type() == QEvent.MouseButtonRelease:
+                    self._save_main_splitter_state()
         return super().eventFilter(obj, event)
 
     def initLayout(self):
