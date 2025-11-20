@@ -38,7 +38,6 @@ PyQt5-Frameless-Window>=0.7.3
 pyqt5-plugins>=5.15.9.2.3
 PyQt5-Qt5>=5.15.2
 PyQt5_sip>=12.17.0
-pyqt5-tools>=5.15.9.3.3
 pyqterm>=0.2
 pyqtgraph>=0.13.7
 PyQtWebEngine>=5.15.7

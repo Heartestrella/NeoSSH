@@ -63,6 +63,43 @@ mime_types = [
 ]
 
 
+def setup_webengine_environment():
+    """设置WebEngine运行环境"""
+
+    # 设置必要的环境变量
+    env_vars = {
+        "QT_PLUGIN_PATH": "/usr/lib/x86_64-linux-gnu/qt5/plugins",
+        "QT_QPA_PLATFORM_PLUGIN_PATH": "/usr/lib/x86_64-linux-gnu/qt5/plugins/platforms",
+        "QT_QPA_PLATFORM": "xcb",
+        "QTWEBENGINE_CHROMIUM_FLAGS": "--no-sandbox --disable-gpu"
+    }
+
+    for key, value in env_vars.items():
+        os.environ[key] = value
+
+    # 检查并安装最小依赖
+    try:
+        # 检查是否已安装必要的系统包
+        check_cmd = "dpkg -l | grep -E 'libqt5webengine5|python3-pyqt5.qtwebengine'"
+        result = subprocess.run(check_cmd, shell=True,
+                                capture_output=True, text=True)
+
+        if not result.stdout.strip():
+            print("安装必要的WebEngine依赖...")
+            subprocess.run(
+                "sudo apt-get install -y python3-pyqt5.qtwebengine libqt5webengine5",
+                shell=True,
+                check=True
+            )
+
+    except subprocess.CalledProcessError:
+        print("WebEngine依赖安装失败，某些功能可能不可用")
+    except Exception:
+        pass
+
+    print("WebEngine环境设置完成")
+
+
 def isDebugMode():
     """Check if the application is running under a debugger."""
     # return True
@@ -2107,6 +2144,10 @@ def has_chinese(text):
 
 if __name__ == '__main__':
     try:
+        import platform
+        if platform.system().lower() == "linux":
+            setup_webengine_environment()
+
         if isDebugMode():
             print("\\\\ Debuger Software Starting \\\\")
         script_dir = os.path.dirname(os.path.abspath(__file__))
