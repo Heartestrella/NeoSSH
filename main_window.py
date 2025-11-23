@@ -720,8 +720,6 @@ class Window(FramelessWindow):
             data["progress"] = percentage
             data["bytes_so_far"] = bytes_so_far
             data["total_bytes"] = total_bytes
-            if percentage >= 100:
-                data["type"] = "completed"
             session_widget.transfer_progress.update_transfer_item(
                 file_id, data)
 
