@@ -7,7 +7,8 @@ import tarfile
 import tempfile
 from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
 import time
-
+import random
+import string
 
 class TransferSignals(QObject):
     """
@@ -31,7 +32,7 @@ class TransferWorker(QRunnable):
 
     def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None, task_id=None, session_id=None):
         super().__init__()
-        self.conn = connection  # Now receives an active connection
+        self.conn = connection
         self.action = action
         self.local_path = local_path
         self.remote_path = remote_path
@@ -43,9 +44,16 @@ class TransferWorker(QRunnable):
         self.signals = TransferSignals()
         self.sftp = None
         self.is_stopped = False
+        self.remote_tar_path = None
 
     def stop(self):
         self.is_stopped = True
+        if self.remote_tar_path and self.conn:
+            try:
+                stdin, stdout, stderr = self.conn.exec_command(f'rm -f "{self.remote_tar_path}"')
+                stdout.channel.recv_exit_status()
+            except Exception:
+                pass
         if self.sftp:
             try:
                 self.sftp.close()
@@ -339,8 +347,6 @@ class TransferWorker(QRunnable):
         print(f"download1 : {remote_path}")
         try:
             if compression:
-                import random
-                import string
                 random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
                 tar_name = f"{random_suffix}.tar.gz"
                 self.signals.compression_finished.emit(identifier, tar_name)
@@ -348,6 +354,8 @@ class TransferWorker(QRunnable):
                 remote_tar = self._remote_tar(paths, identifier, random_suffix)
                 if not remote_tar:
                     raise Exception("Failed to create remote tar file.")
+                
+                self.remote_tar_path = remote_tar
 
                 local_tar_path = os.path.join(
                     local_base, os.path.basename(remote_tar))
@@ -368,6 +376,7 @@ class TransferWorker(QRunnable):
 
                 self._exec_remote_command(f'rm -f "{remote_tar}"')
                 os.remove(local_tar_path)
+                self.remote_tar_path = None
 
                 self.signals.finished.emit(identifier, True, local_base)
 
@@ -378,6 +387,13 @@ class TransferWorker(QRunnable):
                     self._download_item(p, p, local_base)
                 # A batch 'finished' signal is not sent here, to allow individual tracking.
 
+        except (EOFError, paramiko.ssh_exception.SSHException) as e:
+            if self.is_stopped:
+                return
+            tb = traceback.format_exc()
+            error_msg = f"Error during download task: {e}\n{tb}"
+            print(f"❌ {error_msg}")
+            self.signals.finished.emit(identifier, False, error_msg)
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Error during download task: {e}\n{tb}"
@@ -466,8 +482,6 @@ class TransferWorker(QRunnable):
         if not paths:
             return None
         if random_suffix is None:
-            import random
-            import string
             random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
         common_path = os.path.dirname(paths[0]).replace('\\', '/')
         tar_name = f"{random_suffix}.tar.gz"
