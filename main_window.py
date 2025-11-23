@@ -1847,7 +1847,7 @@ class Window(FramelessWindow):
         """)
 
     def _update_transfer_item_name(self, identifier, new_name, widget_key):
-        session_widget = self.session_widgets[widget_key]
+        session_widget = self.session_widgets.get(widget_key)
         if not session_widget:
             return
 
