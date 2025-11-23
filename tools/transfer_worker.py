@@ -342,7 +342,7 @@ class TransferWorker(QRunnable):
                 import random
                 import string
                 random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-                tar_name = f"archive_{random_suffix}.tar.gz"
+                tar_name = f"{random_suffix}.tar.gz"
                 self.signals.compression_finished.emit(identifier, tar_name)
                 
                 remote_tar = self._remote_tar(paths, identifier, random_suffix)
@@ -470,7 +470,7 @@ class TransferWorker(QRunnable):
             import string
             random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
         common_path = os.path.dirname(paths[0]).replace('\\', '/')
-        tar_name = f"archive_{random_suffix}.tar.gz"
+        tar_name = f"{random_suffix}.tar.gz"
         remote_tar_path = f"{common_path}/{tar_name}"
         files_to_tar = ' '.join([f'"{os.path.basename(p)}"' for p in paths])
         self.signals.start_to_compression.emit(remote_tar_path)
