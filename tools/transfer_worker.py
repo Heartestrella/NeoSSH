@@ -7,7 +7,8 @@ import tarfile
 import tempfile
 from PyQt5.QtCore import QObject, QRunnable, pyqtSignal
 import time
-
+import random
+import string
 
 class TransferSignals(QObject):
     """
@@ -31,7 +32,7 @@ class TransferWorker(QRunnable):
 
     def __init__(self, connection, action, local_path, remote_path, compression, download_context=None, upload_context=None, task_id=None, session_id=None):
         super().__init__()
-        self.conn = connection  # Now receives an active connection
+        self.conn = connection
         self.action = action
         self.local_path = local_path
         self.remote_path = remote_path
@@ -43,9 +44,16 @@ class TransferWorker(QRunnable):
         self.signals = TransferSignals()
         self.sftp = None
         self.is_stopped = False
+        self.remote_tar_path = None
 
     def stop(self):
         self.is_stopped = True
+        if self.remote_tar_path and self.conn:
+            try:
+                stdin, stdout, stderr = self.conn.exec_command(f'rm -f "{self.remote_tar_path}"')
+                stdout.channel.recv_exit_status()
+            except Exception:
+                pass
         if self.sftp:
             try:
                 self.sftp.close()
@@ -339,10 +347,15 @@ class TransferWorker(QRunnable):
         print(f"download1 : {remote_path}")
         try:
             if compression:
-                # Simplified compression logic for now
-                remote_tar = self._remote_tar(paths)
+                random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                tar_name = f"{random_suffix}.tar.gz"
+                self.signals.compression_finished.emit(identifier, tar_name)
+                
+                remote_tar = self._remote_tar(paths, identifier, random_suffix)
                 if not remote_tar:
                     raise Exception("Failed to create remote tar file.")
+                
+                self.remote_tar_path = remote_tar
 
                 local_tar_path = os.path.join(
                     local_base, os.path.basename(remote_tar))
@@ -363,6 +376,7 @@ class TransferWorker(QRunnable):
 
                 self._exec_remote_command(f'rm -f "{remote_tar}"')
                 os.remove(local_tar_path)
+                self.remote_tar_path = None
 
                 self.signals.finished.emit(identifier, True, local_base)
 
@@ -373,6 +387,13 @@ class TransferWorker(QRunnable):
                     self._download_item(p, p, local_base)
                 # A batch 'finished' signal is not sent here, to allow individual tracking.
 
+        except (EOFError, paramiko.ssh_exception.SSHException) as e:
+            if self.is_stopped:
+                return
+            tb = traceback.format_exc()
+            error_msg = f"Error during download task: {e}\n{tb}"
+            print(f"❌ {error_msg}")
+            self.signals.finished.emit(identifier, False, error_msg)
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Error during download task: {e}\n{tb}"
@@ -457,21 +478,64 @@ class TransferWorker(QRunnable):
                 # No progress for individual files in a dir download for now
                 self.sftp.get(remote_item, local_item)
 
-    def _remote_tar(self, paths):
+    def _remote_tar(self, paths, identifier=None, random_suffix=None):
         if not paths:
             return None
+        if random_suffix is None:
+            random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
         common_path = os.path.dirname(paths[0]).replace('\\', '/')
-        tar_name = f"archive_{os.path.basename(paths[0])}.tar.gz"
+        tar_name = f"{random_suffix}.tar.gz"
         remote_tar_path = f"{common_path}/{tar_name}"
-
         files_to_tar = ' '.join([f'"{os.path.basename(p)}"' for p in paths])
-
-        cmd = f'cd "{common_path}" && tar -czf "{tar_name}" {files_to_tar}'
-        out, err = self._exec_remote_command(cmd)
-        if err:
-            print(f"Error creating remote tar: {err}")
+        self.signals.start_to_compression.emit(remote_tar_path)
+        try:
+            total_size = 0
+            for p in paths:
+                size_cmd = f'du -sb "{p}" | cut -f1'
+                out, err = self._exec_remote_command(size_cmd)
+                if not err and out.strip().isdigit():
+                    total_size += int(out.strip())
+            if total_size == 0:
+                total_size = 1
+            cmd = f'cd "{common_path}" && tar -czf "{tar_name}" {files_to_tar} 2>&1'
+            stdin, stdout, stderr = self.conn.exec_command(cmd)
+            channel = stdout.channel
+            last_progress_time = time.time()
+            progress_interval = 0.5
+            while not channel.exit_status_ready():
+                if self.is_stopped:
+                    channel.close()
+                    try:
+                        self._exec_remote_command(f'rm -f "{remote_tar_path}"')
+                        print(f"🗑️ Cleaned up incomplete tar file: {remote_tar_path}")
+                    except Exception as cleanup_error:
+                        print(f"Failed to clean up tar file: {cleanup_error}")
+                    return None
+                current_time = time.time()
+                if current_time - last_progress_time >= progress_interval:
+                    try:
+                        stat_cmd = f'stat -c%s "{remote_tar_path}" 2>/dev/null || echo 0'
+                        size_out, _ = self._exec_remote_command(stat_cmd)
+                        current_size = int(size_out.strip()) if size_out.strip().isdigit() else 0
+                        if total_size > 0:
+                            progress = min(int((current_size / total_size) * 100), 99)
+                            if identifier:
+                                self.signals.progress.emit(identifier, progress, current_size, total_size)
+                    except Exception as e:
+                        print(f"Error checking compression progress: {e}")
+                    last_progress_time = current_time
+                time.sleep(0.1)
+            exit_status = channel.recv_exit_status()
+            err_output = stderr.read().decode(errors="ignore")
+            if exit_status != 0:
+                print(f"Error creating remote tar: {err_output}")
+                return None
+            if identifier:
+                self.signals.progress.emit(identifier, 100, total_size, total_size)
+            return remote_tar_path
+        except Exception as e:
+            print(f"Error in _remote_tar: {e}")
             return None
-        return remote_tar_path
 
     def _ensure_remote_directory_exists(self, remote_dir):
         parts = remote_dir.strip('/').split('/')

@@ -135,9 +135,10 @@ class TransferProgressWidget(QWidget):
         item_layout = QHBoxLayout(item_widget)
         item_layout.setContentsMargins(8, 2, 8, 2)
 
-        # --- Icon ---
         if transfer_type == "upload":
             icon, color = FIF.UP, QColor("#0078D4")
+        elif transfer_type == "compression":
+            icon, color = FIF.ZIP_FOLDER, QColor("#8B4513")
         else:
             icon, color = FIF.DOWN, QColor("#D83B01")
 
@@ -261,6 +262,8 @@ class TransferProgressWidget(QWidget):
             original_type = item_widget.property("transfer_type")
             if original_type == "upload":
                 status_icon.setIcon(FIF.UP)
+            elif original_type == "compression":
+                status_icon.setIcon(FIF.ZIP_FOLDER)
             elif original_type == "download":
                 status_icon.setIcon(FIF.DOWN)
             status_icon.setStyleSheet(
@@ -291,6 +294,10 @@ class TransferProgressWidget(QWidget):
                 color = QColor("#0078D4")
                 if status_icon.icon != FIF.UP:
                     status_icon.setIcon(FIF.UP)
+            elif transfer_type == "compression":
+                color = QColor("#8B4513")
+                if status_icon.icon != FIF.ZIP_FOLDER:
+                    status_icon.setIcon(FIF.ZIP_FOLDER)
             elif transfer_type == "download":
                 color = QColor("#D83B01")
                 if status_icon.icon != FIF.DOWN:
