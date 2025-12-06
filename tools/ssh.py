@@ -227,12 +227,25 @@ class SSHWorker(QThread):
             time.sleep(1)
             while self.resources_channel.recv_ready():
                 self.resources_channel.recv(4096)
+
             if self.resources_channel:
                 self.monitor.ssh_channel = self.resources_channel
-            # 优先使用 SSHClient，这样更快
             if self.conn:
                 self.monitor.ssh_client = self.conn
-
+            self.monitor.register_one_shot(
+                lambda data: self.sys_resource.emit(data), kind="sysinfo")
+            self.monitor.register_poll(
+                callback=lambda data: self.sys_resource.emit(data), kind="metrics")
+            self.monitor.register_poll(
+                callback=lambda processes: self.sys_resource.emit(processes), kind="top")
+            self.monitor.register_poll(
+                callback=lambda data: self.sys_resource.emit(data), kind="net")
+            self.monitor.register_poll(
+                callback=lambda data: self.sys_resource.emit(data), kind="connections")
+            self.monitor.register_poll(
+                callback=lambda data: self.sys_resource.emit(data), kind="disk")
+            self.monitor.register_poll(
+                callback=lambda data: self.sys_resource.emit(data), kind="all_processes")
             # print("🧪 测试资源通道...")
             # self.resources_channel.send("echo 'CHANNEL_TEST'\n")
             # time.sleep(1)
@@ -355,20 +368,25 @@ class SSHWorker(QThread):
         if not self.monitor.ssh_channel and self.resources_channel:
             self.monitor.ssh_channel = self.resources_channel
 
-        if not self.first_boot:
-            self.first_boot = True
-            data = self.monitor.get_sysinfo_details()
-            if data:
-                data.update({"type": "sysinfo"})
-            print(data)
-            self.sys_resource.emit(data)
+        # if not self.first_boot:
+        #     self.first_boot = True
+        #     data = self.monitor.get_sysinfo_details()
+        #     if data:
+        #         data.update({"type": "sysinfo"})
+        #     print(data)
+        #     self.sys_resource.emit(data)
 
-        self.monitor.get_combined_metrics_async(
-            lambda data: self.sys_resource.emit(data))
+        # self.monitor.get_combined_metrics_async(
+        #     lambda data: self.sys_resource.emit(data))
 
-        processes = self.monitor.get_top_processes(5)
-        print(processes)
-        # self.sys_resource.emit(processes)
+        # self.monitor.get_top_processes_async(
+        #     5, lambda processes: self.sys_resource.emit(processes))
+
+        # self.monitor.get_net_usage_async(
+        #     5, lambda data: self.sys_resource.emit(data))
+
+        # self.monitor.get_connections_async(
+        #     callback=lambda data: self.sys_resource.emit(data))
 
     def _create_socket(self):
         if self.proxy_type == 'None' or not self.proxy_host or not self.proxy_port:

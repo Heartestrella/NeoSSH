@@ -26,8 +26,19 @@ from widgets.disk_usage_item import DiskMonitor
 from widgets.scripts_widget import CommandScriptWidget
 from widgets.monitorbar import MonitorBar
 from widgets.terminal import TerminalScreen, SshClient
+import random
 CONFIGER = SCM()
 session_manager = SessionManager()
+
+
+def generate_beautiful_color():
+    """生成鲜艳的颜色"""
+    h = random.randint(0, 360)      # 全色调范围
+    s = random.randint(80, 100)     # 高饱和度（80-100%）
+
+    color = QColor()
+    color.setHsl(h, s, 100)
+    return color
 
 
 class SSHPage(QWidget):
@@ -562,9 +573,9 @@ class SSHWidget(QWidget):
         if key in self.loading_animations:
             self.stop_loading_animation(key, force_immediate=True)
         original_style = button.styleSheet()
-        gradient_color1 = QColor("#00aaff")
+        gradient_color1 = generate_beautiful_color()
         gradient_color1.setAlpha(180)
-        gradient_color2 = QColor("#aa00ff")
+        gradient_color2 = generate_beautiful_color()
         gradient_color2.setAlpha(180)
 
         class GradientHelper(QWidget):

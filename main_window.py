@@ -431,6 +431,7 @@ class Window(FramelessWindow):
                     widget.start_loading_animation("net")
                     try:
                         net_usage = result["net_usage"]
+                        # print(f"Net Usage: {net_usage}")
                         if not widget.task.netmonitor.init_interface and net_usage:
                             interfaces = []
                             for i in net_usage:
@@ -476,9 +477,8 @@ class Window(FramelessWindow):
                     widget.start_loading_animation("task")
                     try:
                         top_processes = result["top_processes"]
-                        # 清空现有数据
+                        # print(f"Top Processes: {top_processes}")
                         widget.task.clear_rows()
-                        # 添加新数据
                         for process in top_processes:
                             processes_cpu_percent = process.get("cpu", 0)
                             processes_name = process.get("name", "")

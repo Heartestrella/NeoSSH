@@ -86,8 +86,8 @@ class Tasks(QFrame):
         self.text_color = color_hex
 
     def add_row(self, mem_mb, cpu, cmd):
-        if self.model.rowCount() >= 4:
-            self.model.removeRows(0, self.model.rowCount())
+        # if self.model.rowCount() >= 4:
+        #     self.model.removeRows(0, self.model.rowCount())
 
         items = []
 
@@ -135,3 +135,12 @@ class Tasks(QFrame):
     # def set_netmonitor(self, upload, download):
     #     self.netmonitor.update_speed(
     #         upload_kbps=upload, download_kbps=download)
+
+    def clear_rows(self):
+        """清空表格所有行（安全）。"""
+        try:
+            row_count = self.model.rowCount()
+            if row_count:
+                self.model.removeRows(0, row_count)
+        except Exception as e:
+            print(f"clear_rows failed: {e}")
