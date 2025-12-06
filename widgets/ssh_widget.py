@@ -34,10 +34,11 @@ session_manager = SessionManager()
 def generate_beautiful_color():
     """生成鲜艳的颜色"""
     h = random.randint(0, 360)      # 全色调范围
-    s = random.randint(80, 100)     # 高饱和度（80-100%）
+    s = random.randint(85, 100)     # 高饱和度（85-100%）
+    l = random.randint(60, 80)      # 较高亮度（60-80%）
 
     color = QColor()
-    color.setHsl(h, s, 100)
+    color.setHsl(h, s, l)
     return color
 
 

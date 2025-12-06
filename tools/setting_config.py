@@ -60,6 +60,7 @@ class SCM:
             "update_channel": "none",
             "ai_chat_model": "",
             "terminal_mode": 0,
+            "first_start": True,
             "account": {
                 "user": "Guest",
                 "avatar_url": r"resource\icons\guest.png",

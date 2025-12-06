@@ -22,8 +22,8 @@ class SSHWorker(QThread):
     sys_resource = pyqtSignal(dict)
     file_tree_updated = pyqtSignal(dict)
     auth_error = pyqtSignal(str)
-    # host_key , processes_md5 key
-    key_verification = pyqtSignal(str, str)
+    # host_key
+    key_verification = pyqtSignal(str)
     stop_timer_sig = pyqtSignal()
     command_output_ready = pyqtSignal(str, int)
     force_complete = pyqtSignal(str)
@@ -334,7 +334,7 @@ class SSHWorker(QThread):
 
             # md5 = self.get_remote_md5(self.remote_proc)
             host_key = self.get_hostkey_fp_hex()
-            self.key_verification.emit("", host_key)
+            self.key_verification.emit(host_key)
             # script_path = self.remote_proc
             # check_cmd = f"test -x {script_path} && echo 'EXISTS' || echo 'NOT_FOUND'"
             # self.run_command(check_cmd, channel="resources")

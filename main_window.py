@@ -8,7 +8,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication, QStackedWidget, QHBoxLayout, QWidget, QMessageBox, QSplitter, QLabel
 from widgets.editor_widget import EditorWidget
 from qfluentwidgets import (NavigationInterface,  NavigationItemPosition, InfoBar,
-                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, IconWidget, NavigationAvatarWidget, MessageBoxBase, SubtitleLabel, CheckBox, Dialog)
+                            isDarkTheme, setTheme, Theme, InfoBarPosition, FluentIcon as FIF, FluentTranslator, MessageBox, NavigationAvatarWidget, MessageBoxBase, SubtitleLabel, CheckBox, Dialog)
 from tools.animation_manager import PageTransitionAnimator
 from qfluentwidgets.common.config import qconfig
 from qframelesswindow import FramelessWindow, StandardTitleBar
@@ -377,6 +377,20 @@ class Window(FramelessWindow):
         self.checker.start()
         if isDebugMode():
             print("\\\\ Debuger Done \\\\")
+
+        print(config.get("first_start", True))
+        if config.get("first_start", True):
+            msg_box = MessageBox(
+                self.tr("Welcome to NeoSSH!"),
+                self.tr("Thank you for choosing NeoSSH.\n\n"
+                        "The default terminal is driven by WebEngine, which may experience lag but is the most stable.\n\n"
+                        "You can also try the high-performance solution implemented purely in Python, but stability may be an issue.\n\n"
+                        "If there are any problems, please submit them on GitHub."),
+                self)
+            msg_box.yesButton.setText(self.tr("Got it"))
+            msg_box.cancelButton.hide()
+            msg_box.show()
+            configer.revise_config("first_start", False)
 
     def set_background_opacity(self, opacity: float):
         if not self._bg_pixmap:
@@ -989,14 +1003,10 @@ class Window(FramelessWindow):
                 self._on_ssh_error(
                     self.tr("The user did not enter a password. Connection canceled."))
 
-        def key_verification(file_md5, host_key):
+        def key_verification(host_key):
             msg = ''
-            session_file_md5 = session.processes_md5
             session_host_key = session.host_key
 
-            if session_file_md5 != file_md5:
-                msg += self.tr(
-                    f"The MD5 file fingerprint of the Processes file does not match the record.\nMD5:{file_md5}\n")
             if session_host_key != host_key:
                 msg += self.tr(
                     f"The host key does not match the recorded one.\n{host_key}\n")
@@ -1005,8 +1015,6 @@ class Window(FramelessWindow):
                 msg += self.tr("Are you sure to continue?")
                 w = Dialog(self.tr("Warning!!!!!"), msg, self)
                 if w.exec():
-                    self.sessionmanager.update_session_processes_md5(
-                        parent_key, file_md5)
                     self.sessionmanager.update_session_host_key(
                         parent_key, host_key)
                     start_real_connection()
