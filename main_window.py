@@ -41,6 +41,7 @@ import psutil
 from widgets.session_dialog import PasswordDialog
 import re
 from widgets.account_widget import AccountPage
+from widgets.terminal import SshClient
 try:
     import ctypes
 except:
@@ -413,33 +414,28 @@ class Window(FramelessWindow):
 
     def _set_usage(self, widget_key, usage):
         try:
+            # print(usage)
             result = dict(usage)
             parent_key = widget_key.split("-", 1)[0].strip()
-            # print(self.session_widgets)
-            # print(parent_key)
-            widget = self.session_widgets[widget_key]
-            if widget:
-                if result["type"] == "info":
-                    widget.start_loading_animation("task")
+
+            widget = self.session_widgets.get(widget_key)
+            if not widget:
+                print(f"Failed to obtain the SSH Widget: {widget_key}")
+                return
+
+            if result.get("type") == "info":
+                # 动态更新各个组件，只有提供的数据才更新
+
+                # 更新网络监控
+                if "net_usage" in result:
                     widget.start_loading_animation("net")
-                    connections = result["connections"]
-                    cpu_percent = result["cpu_percent"]
-                    mem_percent = result["mem_percent"]
-                    mem_used = result["mem_used"]
-                    # print(f'memused : {mem_used}')
-                    net_usage = result["net_usage"]
-                    top_processes = result["top_processes"]
-                    all_processes = result["all_processes"]
-                    disk_usage = result["disk_usage"]
-                    uptime_seconds = result["uptime_seconds"]
-                    load = result["load"]
-                    upload, download = 0, 0
                     try:
+                        net_usage = result["net_usage"]
                         if not widget.task.netmonitor.init_interface and net_usage:
                             interfaces = []
                             for i in net_usage:
                                 name = i.get("iface")
-                                if name and name not in interfaces:  # 去重
+                                if name and name not in interfaces:
                                     interfaces.append(name)
 
                             if interfaces:
@@ -451,7 +447,6 @@ class Window(FramelessWindow):
 
                         if net_usage:
                             current_interface = widget.task.netmonitor.interface_combo.currentText()
-
                             target_dict = next((item for item in net_usage if item.get(
                                 'iface') == current_interface), None)
 
@@ -461,7 +456,6 @@ class Window(FramelessWindow):
                                 widget.task.netmonitor.update_speed(
                                     upload, download, current_interface)
                             else:
-                                # 如果找不到当前网卡数据，使用第一个网卡的数据
                                 if net_usage:
                                     first_interface = net_usage[0].get('iface')
                                     if first_interface:
@@ -472,78 +466,135 @@ class Window(FramelessWindow):
                                             "rx_kbps", 0)
                                         widget.task.netmonitor.update_speed(
                                             upload, download, first_interface)
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"网络监控更新失败: {e}")
+                    finally:
+                        widget.stop_loading_animation("net")
 
-                    # widget.sys_resources.set_progress("cpu", cpu_percent)
-                    # widget.sys_resources.set_progress("ram", mem_percent)
-                    # print(mem_percent)
-                    for processes in top_processes:
-                        processes_cpu_percent = processes["cpu"]
-                        processes_name = processes["name"]
-                        processes_mem = processes["mem_mb"]
-                        widget.task.add_row(
-                            f"{processes_mem:.1f}",
-                            f"{processes_cpu_percent:.1f}",
-                            processes_name
-                        )
-                    if connections:
-                        widget.net_monitor.updateProcessData(connections)
-                        # print(processes_cpu_percent, processes_name, processes_mem)
-                    if all_processes:
-                        widget.task_detaile.updateProcessData(all_processes)
-                    if disk_usage:
-                        for disk in disk_usage:
-                            # print(disk)
-                            device = disk.get("device", "")
-                            mount = disk.get("mount", "")
-                            # 唯一ID
-                            disk_id = f"{device}:{mount}"
+                # 更新进程监控
+                if "top_processes" in result:
+                    widget.start_loading_animation("task")
+                    try:
+                        top_processes = result["top_processes"]
+                        # 清空现有数据
+                        widget.task.clear_rows()
+                        # 添加新数据
+                        for process in top_processes:
+                            processes_cpu_percent = process.get("cpu", 0)
+                            processes_name = process.get("name", "")
+                            processes_mem = process.get("mem_mb", 0)
+                            widget.task.add_row(
+                                f"{processes_mem:.1f}",
+                                f"{processes_cpu_percent:.1f}",
+                                processes_name
+                            )
+                    except Exception as e:
+                        print(f"进程监控更新失败: {e}")
+                    finally:
+                        widget.stop_loading_animation("task")
 
-                            widget.disk_usage.update_disk_item(disk_id, {
-                                "device": device,
-                                "mount": mount,
-                                "used_percent": disk.get("used_percent"),
-                                "size_kb": disk.get("size_kb"),
-                                "used_kb": disk.get("used_kb"),
-                                "avail_kb": disk.get("avail_kb"),
-                                "read_kbps": disk.get("read_kbps"),
-                                "write_kbps": disk.get("write_kbps"),
-                            })
+                # 更新详细进程信息
+                if "all_processes" in result:
+                    try:
+                        all_processes = result["all_processes"]
+                        if all_processes:
+                            widget.task_detaile.updateProcessData(
+                                all_processes)
+                    except Exception as e:
+                        print(f"详细进程更新失败: {e}")
 
-                    widget.stop_loading_animation("task")
-                    widget.stop_loading_animation("net")
-                    disk_usage = 0
-                    if disk_usage:
-                        disk_usage[0].get("used_percent", None)
-                    metrics = {
-                        "uptime_seconds": uptime_seconds,
-                        "load": load,
-                        "cpu_percent": cpu_percent,
-                        "ram_percent": mem_percent,
-                        "ram_used_mb": mem_used,
-                        "disk_percent": disk_usage,
-                        "net_up_kbps": upload,
-                        "net_down_kbps": download,
-                    }
+                # 更新网络连接信息
+                if "connections" in result:
+                    try:
+                        connections = result["connections"]
+                        if connections:
+                            widget.net_monitor.updateProcessData(connections)
+                    except Exception as e:
+                        print(f"网络连接更新失败: {e}")
+
+                # 更新磁盘使用情况
+                if "disk_usage" in result:
+                    try:
+                        disk_usage = result["disk_usage"]
+                        if disk_usage:
+                            for disk in disk_usage:
+                                device = disk.get("device", "")
+                                mount = disk.get("mount", "")
+                                disk_id = f"{device}:{mount}"
+
+                                widget.disk_usage.update_disk_item(disk_id, {
+                                    "device": device,
+                                    "mount": mount,
+                                    "used_percent": disk.get("used_percent"),
+                                    "size_kb": disk.get("size_kb"),
+                                    "used_kb": disk.get("used_kb"),
+                                    "avail_kb": disk.get("avail_kb"),
+                                    "read_kbps": disk.get("read_kbps"),
+                                    "write_kbps": disk.get("write_kbps"),
+                                })
+                    except Exception as e:
+                        print(f"磁盘使用情况更新失败: {e}")
+
+                # 更新监控栏指标
+                metrics = {}
+
+                # 动态构建指标数据
+                if "uptime_seconds" in result:
+                    metrics["uptime_seconds"] = result["uptime_seconds"]
+                if "load" in result:
+                    metrics["load"] = result["load"]
+                if "cpu_percent" in result:
+                    metrics["cpu_percent"] = result["cpu_percent"]
+                if "mem_percent" in result:
+                    metrics["ram_percent"] = result["mem_percent"]
+                if "mem_used" in result:
+                    metrics["ram_used_mb"] = result["mem_used"]
+
+                # 网络指标
+                upload, download = 0, 0
+                if "net_usage" in result:
+                    net_usage = result["net_usage"]
+                    if net_usage:
+                        current_interface = widget.task.netmonitor.interface_combo.currentText()
+                        target_dict = next((item for item in net_usage if item.get(
+                            'iface') == current_interface), None)
+                        if target_dict:
+                            upload = target_dict.get("tx_kbps", 0)
+                            download = target_dict.get("rx_kbps", 0)
+
+                metrics["net_up_kbps"] = upload
+                metrics["net_down_kbps"] = download
+
+                # 磁盘指标（使用第一个磁盘的使用率）
+                disk_percent = 0
+                if "disk_usage" in result and result["disk_usage"]:
+                    disk_percent = result["disk_usage"][0].get(
+                        "used_percent", 0)
+                metrics["disk_percent"] = disk_percent
+
+                # 更新监控栏
+                if metrics:
                     widget.monitorbar.update_metrics(metrics)
 
-                elif result["type"] == "sysinfo":
-                    print("Got SysInfo:", result)
+            elif result.get("type") == "sysinfo":
+                # 系统信息更新
+                try:
                     sys_info = f'''
-                    System : {result["system"]} kernel {result["kernel"]}
-                    Arch : {result["arch"]}
-                    Host name : {result["hostname"]}
-                    CPU : {result["cpu_model"]} with {result["cpu_cores"]} cores
-                    Freq : {result["cpu_freq"]} Cache : {result["cpu_cache"]}
-                    Memory : {result["mem_total"]}
-                    Host IP : {result["ip"]}
-                    '''
+    System : {result.get("system", "N/A")} kernel {result.get("kernel", "N/A")}
+    Arch : {result.get("arch", "N/A")}
+    Host name : {result.get("hostname", "N/A")}
+    CPU : {result.get("cpu_model", "N/A")} with {result.get("cpu_cores", "N/A")} cores
+    Freq : {result.get("cpu_freq", "N/A")} Cache : {result.get("cpu_cache", "N/A")}
+    Memory : {result.get("mem_total", "N/A")}
+    Host IP : {result.get("ip", "N/A")}
+    '''
                     widget.sys_info_msg = sys_info
-            else:
-                print("Failed to obtain the SSH Widget")
+                    print("系统信息已更新")
+                except Exception as e:
+                    print(f"系统信息更新失败: {e}")
+
         except Exception as e:
-            print(e)
+            print(f"_set_usage 方法错误: {e}")
 
     def _show_info(self, path: str = None, status: bool = None, msg: str = None, type_: str = None, widget_key: str = None, local_path: str = None, open_it: bool = False):
         no_refresh_types = ["download",
@@ -727,8 +778,11 @@ class Window(FramelessWindow):
 
     def update_user_info(self, name, qid, local=True):
         config = configer.read_config()
-        if config["account"]["apikey"]:
-            return  # apikey exists, do not modify account info
+        try:
+            if config["account"]["apikey"]:
+                return  # apikey exists, do not modify account info
+        except KeyError:
+            return  # no apikey, do not modify account info
         noneed_change = False
 
         if local:
@@ -909,6 +963,7 @@ class Window(FramelessWindow):
                                         remote_path=remote_path, compression=False, file_manager=file_manager)
 
     def _start_ssh_connect(self, widget_key):
+        mode = config.get("terminal_mode", 0)
         parent_key = widget_key.split("-")[0].strip()
         session = self.sessionmanager.get_session_by_name(parent_key)
         jumpbox = None
@@ -1007,18 +1062,23 @@ class Window(FramelessWindow):
             #     resource_path(os.path.join("resource", "icons", "red.png"))))
 
             try:
-                child_widget = self.session_widgets[widget_key]
-                if hasattr(child_widget, 'ssh_widget'):
+                child_widget: SSHWidget = self.session_widgets[widget_key]
+                mode = configer.read_config().get("terminal_mode", 0)
+                if mode == 1:
+                    client = SshClient(channel=worker.channel)
+                    client.start()
+                    child_widget.ssh_widget.set_ssh_thread(client)
+
+                elif mode == 0:
                     child_widget.ssh_widget.set_worker(worker)
                     child_widget._set_file_bar(session.ssh_default_path)
-                else:
-                    print("child_widget does not have an ssh_widget attribute")
+
             except Exception as e:
                 print("Injecting worker failed:", e)
 
-            session_widget.ssh_widget.directoryChanged.connect(
-                lambda path: file_manager.check_path_async(path)
-            )
+            # session_widget.ssh_widget.directoryChanged.connect(
+            #     lambda path: file_manager.check_path_async(path)
+            # )
             session_widget.disk_storage.refresh.triggered.connect(
                 lambda checked, ck=widget_key: self._refresh_paths(ck)
             )

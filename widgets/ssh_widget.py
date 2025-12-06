@@ -25,6 +25,7 @@ from widgets.task_detaile import ProcessMonitor
 from widgets.disk_usage_item import DiskMonitor
 from widgets.scripts_widget import CommandScriptWidget
 from widgets.monitorbar import MonitorBar
+from widgets.terminal import TerminalScreen, SshClient
 CONFIGER = SCM()
 session_manager = SessionManager()
 
@@ -142,7 +143,7 @@ class SSHPage(QWidget):
 
 class SSHWidget(QWidget):
 
-    def __init__(self, name: str,  parent=None, font_name=None, user_name=None):
+    def __init__(self, name: str,  parent=None, font_name=None, user_name=None, ssh_client: SshClient = None):
         super().__init__(parent=parent)
         self.button_animations = {}
         self.file_manager = None
@@ -272,13 +273,21 @@ class SSHWidget(QWidget):
         top_container_layout.setSpacing(0)
 
         # ssh_widget
-        self.ssh_widget = WebTerminal(
-            top_container,
-            font_name=font_name,
-            user_name=user_name,
-            text_color=config["ssh_widget_text_color"]
-        )
-        self.ssh_widget.directoryChanged.connect(self._set_file_bar)
+        global mode
+        mode = config.get("terminal_mode", 0)
+        if mode == 1:
+            # , font_family=font_name)
+            self.ssh_widget = TerminalScreen(
+                text_color=config["ssh_widget_text_color"],
+                font_family=font_name)
+        else:
+            self.ssh_widget = WebTerminal(
+                top_container,
+                font_name=font_name,
+                user_name=user_name,
+                text_color=config["ssh_widget_text_color"]
+            )
+            self.ssh_widget.directoryChanged.connect(self._set_file_bar)
         self.ssh_widget.setObjectName("ssh_widget")
         self.ssh_widget.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -924,7 +933,8 @@ class SSHWidget(QWidget):
 
         # ensure explorer.path updated and only refresh once
         self.file_explorer.path = path
-        self.ssh_widget.bridge.current_directory = path
+        if mode == 0:
+            self.ssh_widget.bridge.current_directory = path
         # explicitly request one refresh
         self._update_file_explorer(path)
 

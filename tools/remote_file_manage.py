@@ -902,11 +902,11 @@ class RemoteFileManager(QThread):
 
                 # common executable-related MIME strings
                 if ("executable" in mime_out
-                            or "x-executable" in mime_out
-                            or mime_out.startswith("application/x-sharedlib")
-                            or "x-mach-binary" in mime_out
-                            or "pe" in mime_out  # covers various PE-like mimes
-                        ):
+                    or "x-executable" in mime_out
+                    or mime_out.startswith("application/x-sharedlib")
+                    or "x-mach-binary" in mime_out
+                    or "pe" in mime_out  # covers various PE-like mimes
+                    ):
                     self.file_type_ready.emit(path, "executable")
                     return "executable"
 
@@ -1662,51 +1662,137 @@ class RemoteFileManager(QThread):
         """
         Checks the type of multiple remote paths using a single shell command.
         Returns a dictionary mapping each path to its type ('directory', 'file', or 'unknown').
-        This is a synchronous method and will block until the command completes.
+        If a path is a directory, it will be the only result for that directory tree.
         """
         if not paths or self.conn is None:
             return {p: 'unknown' for p in paths}
 
+        # 第一步：快速筛选出所有目录路径
         quoted_paths = " ".join([shlex.quote(p) for p in paths])
-        command = f"""
+        dir_check_command = f"""
         for p in {quoted_paths}; do
-            if [ -L "$p" ]; then
-                if [ -d "$p" ]; then echo "directory:$p"; else echo "file:$p"; fi
-            elif [ -d "$p" ]; then echo "directory:$p"
-            elif [ -f "$p" ]; then echo "file:$p"
-            else echo "unknown:$p"; fi
+            if [ -d "$p" ]; then echo "directory:$p"; fi
         done
         """
 
         try:
-            stdin, stdout, stderr = self.conn.exec_command(command, timeout=20)
+            stdin, stdout, stderr = self.conn.exec_command(
+                dir_check_command, timeout=10)
             exit_status = stdout.channel.recv_exit_status()
             output = stdout.read().decode('utf-8', errors='ignore').strip()
-            error_output = stderr.read().decode('utf-8', errors='ignore').strip()
 
-            if exit_status != 0:
-                print(f"Error in check_path_type_list command: {error_output}")
-                return {p: self.check_path_type(p) for p in paths}
-
-            result = {}
+            # 收集所有目录路径
+            directories = set()
             for line in output.splitlines():
                 if not line:
                     continue
                 try:
                     type_str, path_str = line.split(':', 1)
-                    result[path_str] = type_str
+                    if type_str == 'directory':
+                        directories.add(path_str)
                 except ValueError:
-                    print(
-                        f"Could not parse line from check_path_type_list: {line}")
-            # Ensure all paths get a result
-            for p in paths:
-                if p not in result:
-                    result[p] = 'unknown'
+                    continue
+
+            # 第二步：构建结果，目录优先，文件去重
+            result = {}
+            remaining_paths = set(paths)
+
+            # 先处理目录：如果路径在某个目录下，就跳过
+            for dir_path in sorted(directories, key=len, reverse=True):  # 长路径优先
+                if dir_path in remaining_paths:
+                    result[dir_path] = 'directory'
+                    # 移除该目录及其所有子路径
+                    remaining_paths = {p for p in remaining_paths
+                                       if not p.startswith(dir_path + '/') and p != dir_path}
+
+            # 第三步：对剩余路径进行快速文件检查
+            if remaining_paths:
+                quoted_remaining = " ".join(
+                    [shlex.quote(p) for p in remaining_paths])
+                file_check_command = f"""
+                for p in {quoted_remaining}; do
+                    if [ -f "$p" ]; then echo "file:$p"
+                    elif [ ! -d "$p" ]; then echo "unknown:$p"; fi
+                done
+                """
+
+                stdin, stdout, stderr = self.conn.exec_command(
+                    file_check_command, timeout=10)
+                output = stdout.read().decode('utf-8', errors='ignore').strip()
+
+                for line in output.splitlines():
+                    if not line:
+                        continue
+                    try:
+                        type_str, path_str = line.split(':', 1)
+                        result[path_str] = type_str
+                    except ValueError:
+                        continue
+
+            # 确保所有原始路径都有结果（至少标记为unknown）
+            for path in paths:
+                if path not in result:
+                    # 检查这个路径是否被某个目录覆盖了
+                    is_covered = any(path.startswith(dir_path + '/')
+                                     for dir_path in directories)
+                    if not is_covered:
+                        result[path] = 'unknown'
+
             return result
 
         except Exception as e:
             print(f"Exception in check_path_type_list: {e}")
-            return {p: self.check_path_type(p) for p in paths}
+            # 降级方案：逐个检查，但同样应用目录优先逻辑
+            return self._fallback_check_with_dir_priority(paths)
+    # def check_path_type_list(self, paths: List[str]) -> Dict[str, str]:
+    #     """
+    #     Checks the type of multiple remote paths using a single shell command.
+    #     Returns a dictionary mapping each path to its type ('directory', 'file', or 'unknown').
+    #     This is a synchronous method and will block until the command completes.
+    #     """
+    #     if not paths or self.conn is None:
+    #         return {p: 'unknown' for p in paths}
+
+    #     quoted_paths = " ".join([shlex.quote(p) for p in paths])
+    #     command = f"""
+    #     for p in {quoted_paths}; do
+    #         if [ -L "$p" ]; then
+    #             if [ -d "$p" ]; then echo "directory:$p"; else echo "file:$p"; fi
+    #         elif [ -d "$p" ]; then echo "directory:$p"
+    #         elif [ -f "$p" ]; then echo "file:$p"
+    #         else echo "unknown:$p"; fi
+    #     done
+    #     """
+
+    #     try:
+    #         stdin, stdout, stderr = self.conn.exec_command(command, timeout=20)
+    #         exit_status = stdout.channel.recv_exit_status()
+    #         output = stdout.read().decode('utf-8', errors='ignore').strip()
+    #         error_output = stderr.read().decode('utf-8', errors='ignore').strip()
+
+    #         if exit_status != 0:
+    #             print(f"Error in check_path_type_list command: {error_output}")
+    #             return {p: self.check_path_type(p) for p in paths}
+
+    #         result = {}
+    #         for line in output.splitlines():
+    #             if not line:
+    #                 continue
+    #             try:
+    #                 type_str, path_str = line.split(':', 1)
+    #                 result[path_str] = type_str
+    #             except ValueError:
+    #                 print(
+    #                     f"Could not parse line from check_path_type_list: {line}")
+    #         # Ensure all paths get a result
+    #         for p in paths:
+    #             if p not in result:
+    #                 result[p] = 'unknown'
+    #         return result
+
+    #     except Exception as e:
+    #         print(f"Exception in check_path_type_list: {e}")
+    #         return {p: self.check_path_type(p) for p in paths}
 
     def get_default_path(self, default_path: str = None) -> Optional[str]:
         try:

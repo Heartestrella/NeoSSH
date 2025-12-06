@@ -12,6 +12,7 @@ import socket
 import uuid
 import time
 from tools.session_manager import Session
+from tools.monitor import Monitor
 
 
 class SSHWorker(QThread):
@@ -29,6 +30,7 @@ class SSHWorker(QThread):
 
     def __init__(self, session_info, parent=None, for_file=False, jumpbox=False):
         super().__init__(parent)
+        self.monitor = Monitor()
         self.host = session_info.host
         self.user = session_info.username
         self.port = session_info.port
@@ -49,7 +51,11 @@ class SSHWorker(QThread):
         self.timer = None
         self.for_file = for_file
         self._buffer = b""  # Storing incomplete output data
-
+        self._output_buffer = b""  # 终端输出缓冲区，用于批量发送
+        self._last_emit_time = 0  # 上次发送时间
+        self._emit_interval = 0.05  # 发送间隔（50ms）
+        self._max_buffer_size = 8192  # 最大缓冲区大小（8KB）
+        self.first_boot = False
         # File tree structure
         self.file_tree: Dict = {}
         # Store the contents of each directory
@@ -212,69 +218,91 @@ class SSHWorker(QThread):
             transport = self.conn.get_transport()
             transport.set_keepalive(30)
             self.channel = transport.open_session()
-            self.channel.get_pty(term='xterm', width=120, height=30)
+            self.channel.get_pty(term='xterm-256color', width=120, height=30)
             self.channel.invoke_shell()
 
             self.resources_channel = transport.open_session()
-            self.resources_channel.get_pty(term='xterm', width=120, height=30)
+            self.resources_channel.get_pty(term='dumb', width=120, height=30)
             self.resources_channel.invoke_shell()
-
             time.sleep(1)
+            while self.resources_channel.recv_ready():
+                self.resources_channel.recv(4096)
+            if self.resources_channel:
+                self.monitor.ssh_channel = self.resources_channel
+            # 优先使用 SSHClient，这样更快
+            if self.conn:
+                self.monitor.ssh_client = self.conn
+
+            # print("🧪 测试资源通道...")
+            # self.resources_channel.send("echo 'CHANNEL_TEST'\n")
+            # time.sleep(1)
+
+            # # 检查测试响应
+            # if self.resources_channel.recv_ready():
+            #     test_response = self.resources_channel.recv(
+            #         4096).decode('utf-8', errors='ignore')
+            #     print(f"🧪 通道测试响应: {test_response}")
+            # else:
+            #     print("❌ 通道测试无响应")
+
+            # # 设置监控器
+            # self.monitor.ssh_channel = self.resources_channel
+            # print("✅ 资源通道设置完成")
             # ---------- resources handling ----------
-            try:
-                self.sftp = self.conn.open_sftp()
-                remote_dir = "./.ssh"
-                self.remote_proc = "./.ssh/processes.sh"
-                self.local_proc = resource_path(os.path.join(
-                    "resource", "processes.sh"))
-                # ensure remote .ssh dir exists
-                try:
-                    self.sftp.stat(remote_dir)
-                except IOError:
-                    try:
-                        self.sftp.mkdir(remote_dir, mode=0o700)
-                        print(f"创建远端目录 {remote_dir}")
-                    except Exception as e:
-                        print(f"无法创建远端目录 {remote_dir}: {e}")
-                if not os.path.exists(self.local_proc):
-                    err = f"本地 processes 文件不存在: {self.local_proc}"
-                    print(err)
-                    self.error_occurred.emit(err)
-                else:
-                    try:
-                        print(
-                            f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
-                        with open(self.local_proc, 'rb') as f:
-                            content = f.read()
-                        content = content.replace(b'\r\n', b'\n')
-                        import tempfile
-                        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.sh') as tmp:
-                            tmp.write(content)
-                            tmp_path = tmp.name
-                        try:
-                            self.sftp.put(tmp_path, self.remote_proc)
-                            self.sftp.chmod(self.remote_proc, 0o755)
-                            print("✅ 上传并设置可执行成功")
-                        finally:
-                            try:
-                                os.unlink(tmp_path)
-                            except Exception:
-                                pass
-                    except Exception as e:
-                        tb = traceback.format_exc()
-                        err = f"上传 processes 失败: {e}\n{tb}"
-                        print(err)
-                        self.error_occurred.emit(err)
-                try:
-                    self.sftp.close()
-                    print("SFTP 连接已关闭")
-                except Exception:
-                    pass
-            except Exception as e:
-                tb = traceback.format_exc()
-                print(f"resources pre-check/upload 出错: {e}\n{tb}")
-                self.error_occurred.emit(
-                    f"resources pre-check/upload 出错: {e}")
+            # try:
+            #     self.sftp = self.conn.open_sftp()
+            #     remote_dir = "./.ssh"
+            #     self.remote_proc = "./.ssh/processes.sh"
+            #     self.local_proc = resource_path(os.path.join(
+            #         "resource", "processes.sh"))
+            #     # ensure remote .ssh dir exists
+            #     try:
+            #         self.sftp.stat(remote_dir)
+            #     except IOError:
+            #         try:
+            #             self.sftp.mkdir(remote_dir, mode=0o700)
+            #             print(f"创建远端目录 {remote_dir}")
+            #         except Exception as e:
+            #             print(f"无法创建远端目录 {remote_dir}: {e}")
+            #     if not os.path.exists(self.local_proc):
+            #         err = f"本地 processes 文件不存在: {self.local_proc}"
+            #         print(err)
+            #         self.error_occurred.emit(err)
+            #     else:
+            #         try:
+            #             print(
+            #                 f"上传本地 {self.local_proc} 到远端 {self.remote_proc} ...")
+            #             with open(self.local_proc, 'rb') as f:
+            #                 content = f.read()
+            #             content = content.replace(b'\r\n', b'\n')
+            #             import tempfile
+            #             with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.sh') as tmp:
+            #                 tmp.write(content)
+            #                 tmp_path = tmp.name
+            #             try:
+            #                 self.sftp.put(tmp_path, self.remote_proc)
+            #                 self.sftp.chmod(self.remote_proc, 0o755)
+            #                 print("✅ 上传并设置可执行成功")
+            #             finally:
+            #                 try:
+            #                     os.unlink(tmp_path)
+            #                 except Exception:
+            #                     pass
+            #         except Exception as e:
+            #             tb = traceback.format_exc()
+            #             err = f"上传 processes 失败: {e}\n{tb}"
+            #             print(err)
+            #             self.error_occurred.emit(err)
+            #     try:
+            #         self.sftp.close()
+            #         print("SFTP 连接已关闭")
+            #     except Exception:
+            #         pass
+            # except Exception as e:
+            #     tb = traceback.format_exc()
+            #     print(f"resources pre-check/upload 出错: {e}\n{tb}")
+            #     self.error_occurred.emit(
+            #         f"resources pre-check/upload 出错: {e}")
             # ---------- main channel handling ----------
             cd_folder: str = self.ssh_default_path.replace("\\", "/")
             if "/" in cd_folder:
@@ -284,26 +312,31 @@ class SSHWorker(QThread):
             self.timer = QTimer()
             self.stop_timer_sig.connect(self.timer.stop)
             self.timer.timeout.connect(self._check_output)
-            self.timer.start(100)
+            self.timer.start(50)  # 减少到 50ms，但使用批量发送减少 UI 更新频率
 
-            md5 = self.get_remote_md5(self.remote_proc)
+            # self.resource_timer = QTimer()
+            # self.stop_timer_sig.connect(self.resource_timer.stop)
+            # self.timer.timeout.connect(self.get_sysinfo)
+            # self.timer.start(10000)
+
+            # md5 = self.get_remote_md5(self.remote_proc)
             host_key = self.get_hostkey_fp_hex()
-            self.key_verification.emit(md5, host_key)
-            script_path = self.remote_proc
-            check_cmd = f"test -x {script_path} && echo 'EXISTS' || echo 'NOT_FOUND'"
-            self.run_command(check_cmd, channel="resources")
-            if self.user == "root":
-                cmd = f'{script_path}'
-                print(f"Running without sudo as root: {cmd}")
-            else:
-                cmd = f'echo {self.password} | sudo -S bash {script_path}'
-                print(f"Running with sudo as non-root: {cmd}")
-            try:
-                self.run_command(cmd, channel="resources")
-                print(f"已启动远端 processes 可执行文件({script_path})")
-            except Exception as e:
-                print(f"启动 processes 失败：{e}")
-                self.error_occurred.emit(f"启动 processes 失败：{e}")
+            self.key_verification.emit("", host_key)
+            # script_path = self.remote_proc
+            # check_cmd = f"test -x {script_path} && echo 'EXISTS' || echo 'NOT_FOUND'"
+            # self.run_command(check_cmd, channel="resources")
+            # if self.user == "root":
+            #     cmd = f'{script_path}'
+            #     print(f"Running without sudo as root: {cmd}")
+            # else:
+            #     cmd = f'echo {self.password} | sudo -S bash {script_path}'
+            #     print(f"Running with sudo as non-root: {cmd}")
+            # try:
+            #     self.run_command(cmd, channel="resources")
+            #     print(f"已启动远端 processes 可执行文件({script_path})")
+            # except Exception as e:
+            #     print(f"启动 processes 失败：{e}")
+            #     self.error_occurred.emit(f"启动 processes 失败：{e}")
 
             self.exec_()
             self._cleanup()
@@ -314,6 +347,28 @@ class SSHWorker(QThread):
         except Exception as e:
             tb = traceback.format_exc()
             self.error_occurred.emit(f"{e}\n{tb}")
+
+    def get_sysinfo_async(self):
+
+        if not self.monitor.ssh_client and self.conn:
+            self.monitor.ssh_client = self.conn
+        if not self.monitor.ssh_channel and self.resources_channel:
+            self.monitor.ssh_channel = self.resources_channel
+
+        if not self.first_boot:
+            self.first_boot = True
+            data = self.monitor.get_sysinfo_details()
+            if data:
+                data.update({"type": "sysinfo"})
+            print(data)
+            self.sys_resource.emit(data)
+
+        self.monitor.get_combined_metrics_async(
+            lambda data: self.sys_resource.emit(data))
+
+        processes = self.monitor.get_top_processes(5)
+        print(processes)
+        # self.sys_resource.emit(processes)
 
     def _create_socket(self):
         if self.proxy_type == 'None' or not self.proxy_host or not self.proxy_port:
@@ -417,41 +472,74 @@ class SSHWorker(QThread):
 
             # 检查主channel
             if self.channel:
+                # 批量读取数据到缓冲区
                 if self.channel.recv_ready():
-                    chunk = self.channel.recv(4096)
-                    self.result_ready.emit(chunk)
-                    if self.is_capturing:
-                        self.capture_buffer += chunk
-                        self._process_capture_buffer()
-
-                if self.channel.closed or self.channel.exit_status_ready():
+                    # 一次性读取更多数据，减少调用次数
                     while self.channel.recv_ready():
-                        chunk = self.channel.recv(4096)
-                        self.result_ready.emit(chunk)
+                        chunk = self.channel.recv(8192)  # 增加读取大小
+                        self._output_buffer += chunk
                         if self.is_capturing:
                             self.capture_buffer += chunk
-                            self._process_capture_buffer()
+
+                    # 如果缓冲区达到一定大小，立即发送
+                    if len(self._output_buffer) >= self._max_buffer_size:
+                        self._flush_output_buffer()
+                    # 否则检查是否到了发送时间
+                    else:
+                        current_time = time.time()
+                        if current_time - self._last_emit_time >= self._emit_interval:
+                            self._flush_output_buffer()
+
+                if self.channel.closed or self.channel.exit_status_ready():
+                    # 通道关闭时，发送所有剩余数据
+                    while self.channel.recv_ready():
+                        chunk = self.channel.recv(8192)
+                        self._output_buffer += chunk
+                        if self.is_capturing:
+                            self.capture_buffer += chunk
+                    # 发送剩余缓冲区数据
+                    if self._output_buffer:
+                        self._flush_output_buffer()
+                    # 处理捕获缓冲区
+                    if self.is_capturing:
+                        self._process_capture_buffer()
                     # 只有主channel关闭时才退出线程
                     self.quit()
 
-            # 检查资源channel
-            if self.resources_channel:
-                if self.resources_channel.recv_ready():
-                    chunk = self.resources_channel.recv(4096)
-                    # 资源channel的数据专门用于系统资源处理
-                    self._buffer += chunk
-                    self._process_sys_resource_buffer()
+            current_time = time.time()
+            if not hasattr(self, '_last_sysinfo_time'):
+                self._last_sysinfo_time = 0
 
-                if self.resources_channel.closed or self.resources_channel.exit_status_ready():
-                    while self.resources_channel.recv_ready():
-                        chunk = self.resources_channel.recv(4096)
-                        self._buffer += chunk
-                        self._process_sys_resource_buffer()
-                    # 资源channel关闭不影响主连接，只记录日志
-                    print("资源监控channel已关闭")
+            if current_time - self._last_sysinfo_time > 2:  # 2秒间隔
+                self._last_sysinfo_time = current_time
+                self.get_sysinfo_async()
+            # # 检查资源channel
+            # if self.resources_channel:
+            #     if self.resources_channel.recv_ready():
+            #         chunk = self.resources_channel.recv(4096)
+            #         # 资源channel的数据专门用于系统资源处理
+            #         self._buffer += chunk
+            #         self._process_sys_resource_buffer()
+
+            #     if self.resources_channel.closed or self.resources_channel.exit_status_ready():
+            #         while self.resources_channel.recv_ready():
+            #             chunk = self.resources_channel.recv(4096)
+            #             self._buffer += chunk
+            #             self._process_sys_resource_buffer()
+            #         # 资源channel关闭不影响主连接，只记录日志
+            #         print("资源监控channel已关闭")
 
         except Exception as e:
             self.error_occurred.emit(str(e))
+
+    def _flush_output_buffer(self):
+        """发送缓冲区中的数据"""
+        if self._output_buffer:
+            self.result_ready.emit(self._output_buffer)
+            self._output_buffer = b""
+            self._last_emit_time = time.time()
+            if self.is_capturing:
+                self._process_capture_buffer()
 
     def _process_sys_resource_buffer(self):
         try:

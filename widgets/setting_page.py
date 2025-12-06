@@ -82,6 +82,12 @@ class Config(QConfig):
         restart=False
     )
 
+    terminal_mode = OptionsConfigItem(
+        "Webengine", "Python Terminal", "0",
+        OptionsValidator(["0", "1",]),
+        restart=False
+    )
+
 
 class FontSelectorDialog(QDialog):
     """
@@ -439,6 +445,22 @@ class SettingPage(ScrollArea):
         self._register_searchable(self.language_card, self.tr("Language"),
                                   ["language", "语言", "lang", "system default", "english", "中文", "简体中文", "日本語", "русский"])
 
+        self.terminal_mode = ComboBoxSettingCard(
+            configItem=self.cfg.terminal_mode,
+            icon=FluentIcon.MORE,
+            title=self.tr("Terminal Mode"),
+            content=self.tr("Select terminal interaction mode"),
+            texts=[
+                self.tr("WebEngine(Stable version)"),
+                self.tr("Python Terminal(Advanced version)"),
+            ]
+        )
+        layout.addWidget(self.terminal_mode)
+        self._register_searchable(self.terminal_mode, self.tr("Terminal Mode"),
+                                  ["terminal", "mode", "standard", "advanced", "expert"])
+        self.terminal_mode.comboBox.currentIndexChanged.connect(
+            self._on_update_terminal_mode_changed)
+
         self.update_channel_card = ComboBoxSettingCard(
             configItem=self.cfg.update_channel,
             icon=FluentIcon.UPDATE,
@@ -455,6 +477,7 @@ class SettingPage(ScrollArea):
         layout.addWidget(self.update_channel_card)
         self._register_searchable(self.update_channel_card, self.tr("Update Channel"),
                                   ["update", "channel", "stable", "insider", "更新", "渠道"])
+        layout.addWidget(self.update_channel_card)
 
         self.right_panel_ai_chat_card = SwitchSettingCard(
             icon=FluentIcon.CHAT,
@@ -861,6 +884,9 @@ class SettingPage(ScrollArea):
         self.update_channel_card.comboBox.setCurrentIndex(
             update_channel_map.get(current_channel, 0))
 
+        self.terminal_mode.comboBox.setCurrentIndex(
+            int(self.config.get("terminal_mode", "0")))
+
     def _restore_background_opacity(self, value):
         parent = self.parent()
         while parent:
@@ -967,6 +993,9 @@ class SettingPage(ScrollArea):
         channel_map = {0: "none", 1: "stable", 2: "insider"}
         value_to_save = channel_map.get(index, "stable")
         configer.revise_config("update_channel", value_to_save)
+
+    def _on_update_terminal_mode_changed(self, index: int):
+        configer.revise_config("terminal_mode", index)
 
     def _restart(self):
         pass
