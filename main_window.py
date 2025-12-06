@@ -772,7 +772,11 @@ class Window(FramelessWindow):
             data["bytes_so_far"] = bytes_so_far
             data["total_bytes"] = total_bytes
             if percentage >= 100:
-                data["type"] = "completed"
+                if data.get("type") == "compression":
+                    data["type"] = "download"
+                    data["progress"] = 0
+                elif data.get("type") == "download":
+                    data["type"] = "completed"
             session_widget.transfer_progress.update_transfer_item(
                 file_id, data)
 
@@ -1286,7 +1290,7 @@ class Window(FramelessWindow):
             else:  # Compressed download
                 print(f"{type(paths_to_download)} {paths_to_download}")
                 self._add_transfer_item_if_not_exists(
-                    widget_key, paths_to_download[0], "download", open_it=False)
+                    widget_key, paths_to_download[0], "compression", open_it=False)
                 file_manager.download_path_async(
                     paths_to_download[0], open_it=False, compression=compression)
 
@@ -1907,7 +1911,7 @@ class Window(FramelessWindow):
         """)
 
     def _update_transfer_item_name(self, identifier, new_name, widget_key):
-        session_widget = self.session_widgets[widget_key]
+        session_widget = self.session_widgets.get(widget_key)
         if not session_widget:
             return
 

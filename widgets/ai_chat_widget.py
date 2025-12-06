@@ -539,16 +539,20 @@ class AIBridge(QObject):
                             return result
                         if request_id and self.pending_tool_calls.get(request_id, {}).get('cancelled'):
                             return
+                        leading_whitespace = ""
+                        if start_line <= len(lines):
+                            first_line_of_block = lines[start_line - 1]
+                            leading_whitespace = first_line_of_block[:len(
+                                first_line_of_block) - len(first_line_of_block.lstrip())]
                         original_last_line = lines[end_line - 1]
                         line_ending = '\n'
                         if original_last_line.endswith('\r\n'):
                             line_ending = '\r\n'
-                        replace_block_stripped = replace_block.strip()
                         new_content_parts = []
-                        if replace_block_stripped:
-                            replace_lines = replace_block_stripped.splitlines()
+                        if replace_block and not replace_block.isspace():
+                            replace_lines = replace_block.rstrip('\n\r').splitlines()
                             new_content_parts = [
-                                line + line_ending for line in replace_lines]
+                                leading_whitespace + line + line_ending for line in replace_lines]
                         new_lines = lines[:start_line - 1] + \
                             new_content_parts + lines[end_line:]
                         new_full_content = "".join(new_lines)
@@ -1375,12 +1379,15 @@ class AIBridge(QObject):
                     first_line_of_block = lines[start_line - 1]
                     leading_whitespace = first_line_of_block[:len(
                         first_line_of_block) - len(first_line_of_block.lstrip())]
+                original_last_line = lines[end_line - 1]
                 line_ending = '\n'
+                if original_last_line.endswith('\r\n'):
+                    line_ending = '\r\n'
                 new_content_parts = []
                 if replace_block and not replace_block.isspace():
-                    replace_lines = replace_block.strip('\n\r').splitlines()
+                    replace_lines = replace_block.rstrip('\n\r').splitlines()
                     new_content_parts = [
-                        leading_whitespace + line.lstrip() + line_ending for line in replace_lines]
+                        leading_whitespace + line + line_ending for line in replace_lines]
                 modified_lines = lines[:start_line - 1] + \
                     new_content_parts + lines[end_line:]
                 modified_full_content = "".join(modified_lines)

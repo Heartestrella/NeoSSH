@@ -552,6 +552,12 @@ class RemoteFileManager(QThread):
             worker._download_callback = emit_download_finished
             worker.signals.progress.connect(
                 self.download_progress, Qt.QueuedConnection)
+            worker.signals.compression_finished.connect(
+                self.compression_finished)
+            worker.signals.start_to_compression.connect(
+                self.start_to_compression)
+            worker.signals.start_to_uncompression.connect(
+                self.start_to_uncompression)
 
         self.thread_pool.start(worker)
 
