@@ -7,6 +7,7 @@ import paramiko
 import socket
 import select
 from tools.session_manager import SessionManager
+import re
 session_manager = SessionManager()
 
 
@@ -20,6 +21,16 @@ BRIGHT_COLORS = {
     'brown':   QColor("#F1C40F"), 'blue':    QColor("#3498DB"), 'magenta': QColor("#9B59B6"),
     'cyan':    QColor("#1ABC9C"), 'white':   QColor("#ECF0F1"), 'default': QColor("#ECF0F1"),
 }
+
+_ansi_csi_re = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]')
+_ansi_esc_re = re.compile(r'\x1b.[@-~]?')
+
+
+def _strip_ansi_sequences(s: str) -> str:
+    """移除常见的 ESC/CSI 控制序列"""
+    s = _ansi_csi_re.sub('', s)
+    s = _ansi_esc_re.sub('', s)
+    return s
 
 
 class SshClient(QThread):
@@ -132,7 +143,8 @@ class TerminalScreen(QWidget):
         super().__init__()
         self.ssh = None  # 延迟设置
         self.setFocusPolicy(Qt.StrongFocus)
-
+        self.terminal_texts = ""
+        self._terminal_texts_max = 15000  # 增加限制，确保不会无限增长
         # 支持通过参数传入默认文本颜色（可以传 QColor 或字符串 '#rrggbb'）
         if text_color is None:
             # 保持向后兼容的默认颜色（与原先 BRIGHT_COLORS['default'] 类似）
@@ -198,10 +210,27 @@ class TerminalScreen(QWidget):
             return QColor(name)
         return self.default_fg if not bg else QColor(Qt.black)
 
+    # def put_data(self, data: bytes):
+    #     """处理接收到的数据"""
+    #     try:
+    #         self.stream.feed(data.decode('utf-8', errors='replace'))
+
+    #         max_rows = self._get_max_buffer_rows()
+    #         self.scroll_offset = max(0, max_rows - self.rows)
+
+    #         self.update()
+    #     except Exception:
+    #         pass
     def put_data(self, data: bytes):
         """处理接收到的数据"""
         try:
-            self.stream.feed(data.decode('utf-8', errors='replace'))
+            text = data.decode('utf-8', errors='replace')
+            self.stream.feed(text)
+
+            plain = _strip_ansi_sequences(text)
+            self.terminal_texts += plain
+            if len(self.terminal_texts) > self._terminal_texts_max:
+                self.terminal_texts = self.terminal_texts[-self._terminal_texts_max:]
 
             max_rows = self._get_max_buffer_rows()
             self.scroll_offset = max(0, max_rows - self.rows)
@@ -506,3 +535,68 @@ class TerminalScreen(QWidget):
 
     def fit_terminal(self):
         pass
+
+    def execute_command_and_capture(self, command: str):
+        """Sends a command to the terminal for execution and capture."""
+        # 确保 SSH 连接对象存在，即 self.ssh 不为 None
+        if self.ssh is None:
+            # 如果 self.ssh 为 None，则返回或抛出错误，
+            # 否则后续的 self.send_command 会失败
+            print("Error: SSH connection (self.ssh) is not set.")
+            return
+
+        if command is None:
+            return
+
+        # 直接调用 send_command
+        self.send_command(command + '\r')
+
+    def get_latest_output(self, count=1):
+        """
+        Parses the last 'count' command outputs from the terminal_texts buffer.
+        Returns the result as an XML string.
+        """
+        if not self.terminal_texts:
+            return "<results></results>"
+        # 兼容 WebTerminal 的逻辑，使用正则表达式匹配常见的 Shell 提示符
+        prompt_re = re.compile(r"[\w\d\._-]+@[\w\d\.-]+:.*[#\$]")
+        lines = self.terminal_texts.splitlines()
+        prompt_indices = [i for i, line in enumerate(
+            lines) if prompt_re.search(line)]
+
+        results_xml = "<results>"
+        # 至少需要两个提示符才能界定一个命令及其输出
+        num_possible_outputs = len(prompt_indices) - 1
+
+        if num_possible_outputs < 1:
+            return "<results></results>"
+
+        actual_count = min(count, num_possible_outputs)
+
+        for i in range(actual_count):
+            # 从后向前解析
+            end_prompt_index = prompt_indices[-(i + 1)]  # 当前命令执行结束后的提示符
+            start_prompt_index = prompt_indices[-(i + 2)]  # 上一个命令执行前的提示符
+
+            start_prompt_line = lines[start_prompt_index]
+            cleaned_start_line = _strip_ansi_sequences(start_prompt_line)
+
+            command = ""
+            last_hash_pos = cleaned_start_line.rfind('#')
+            last_dollar_pos = cleaned_start_line.rfind('$')
+            split_pos = max(last_hash_pos, last_dollar_pos)
+
+            # 提取命令文本 (提示符之后的内容)
+            if split_pos != -1:
+                command = cleaned_start_line[split_pos + 1:].strip()
+
+            # 提取命令输出 (从命令提示符的下一行到下一个提示符的上一行)
+            output_lines = lines[start_prompt_index + 1: end_prompt_index]
+            full_output = "\n".join(output_lines)
+            plain_output = _strip_ansi_sequences(full_output)
+
+            # 构建 XML 结果
+            results_xml += f"""<command_{i + 1}><cmd>{command}</cmd><output>{plain_output}</output></command_{i + 1}>"""
+
+        results_xml += "\n</results>"
+        return results_xml

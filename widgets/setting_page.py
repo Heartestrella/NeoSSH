@@ -887,6 +887,9 @@ class SettingPage(ScrollArea):
         self.terminal_mode.comboBox.setCurrentIndex(
             int(self.config.get("terminal_mode", "0")))
 
+        self.right_panel_ai_chat_card.setChecked(
+            self.config.get("right_panel_ai_chat", False))
+
     def _restore_background_opacity(self, value):
         parent = self.parent()
         while parent:
