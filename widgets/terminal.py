@@ -1,8 +1,10 @@
 from pyte.screens import HistoryScreen, Char
 import pyte
-from PyQt5.QtWidgets import QWidget, QApplication
+from PyQt5.QtWidgets import QWidget, QApplication, QShortcut
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QPainter, QFont, QColor, QFontMetrics, QKeyEvent, QMouseEvent, QWheelEvent
+from PyQt5.QtGui import QPainter, QFont, QColor, QFontMetrics, QKeyEvent, QMouseEvent, QWheelEvent, QContextMenuEvent, QKeySequence
+from qfluentwidgets import RoundMenu, Action
+
 import paramiko
 import socket
 import select
@@ -313,168 +315,107 @@ class TerminalScreen(QWidget):
             self.press_pos = None
 
     def get_selected_text(self):
-        """获取选中的文本"""
+        """获取选中的文本（修复：正确处理历史缓冲区和屏幕坐标映射）"""
         if not self.selection_start or not self.selection_end:
             return ""
 
         (sx, sy) = self.selection_start
         (ex, ey) = self.selection_end
 
+        # 归一化选择范围（确保 start < end）
         if (sy > ey) or (sy == ey and sx > ex):
             sx, sy, ex, ey = ex, ey, sx, sy
 
         text = []
-
-        for y in range(sy, ey + 1):
-            if y not in self.screen.buffer:
-                continue
-
-            line_dict = self.screen.buffer[y]
-
-            line = "".join(line_dict.get(col).data if line_dict.get(
-                col) else ' ' for col in range(self.cols))
-
-            start_col = sx if y == sy else 0
-            end_col = ex + 1 if y == ey else len(line)
-
-            text.append(line[start_col:end_col])
-
-        return "\n".join(text).strip()
-
-    def paintEvent(self, event):
-        """绘制终端内容"""
-        painter = QPainter(self)
-        painter.setFont(self.font)
-        # 不填充背景，保持完全透明（仅绘制字符与高亮）
-        painter.setRenderHint(QPainter.Antialiasing)
-
         history_len = len(self.screen.history.top)
 
-        start_abs_index = self.scroll_offset
-        end_abs_index = self.scroll_offset + self.rows
+        for abs_y in range(sy, ey + 1):
+            line_dict = {}
 
-        class PlaceholderChar:
-            data = ' '
-            fg = 'default'
-            bg = 'default'
-            bold = False
-            italics = False
-            underscore = False
-            strikethrough = False
-            reverse = False
-            blink = False
-
-        for screen_y in range(self.rows):
-            abs_y = start_abs_index + screen_y
-            line_buffer_dict = {}
-
+            # 从历史缓冲区或当前屏幕缓冲区获取行
             if abs_y < history_len:
                 try:
-                    line_buffer_dict = self.screen.history.top[abs_y]
+                    line_dict = self.screen.history.top[abs_y]
                 except IndexError:
-                    pass
-
+                    continue
             elif history_len <= abs_y < history_len + self.rows:
                 buffer_y = abs_y - history_len
-                line_buffer_dict = self.screen.buffer.get(buffer_y, {})
-
+                line_dict = self.screen.buffer.get(buffer_y, {})
             else:
                 continue
 
-            if not line_buffer_dict:
+            if not line_dict:
                 continue
 
-            for x in range(self.cols):
-                char = line_buffer_dict.get(x)
+            # 确定本行的起止列
+            start_col = sx if abs_y == sy else 0
+            end_col = (ex + 1) if abs_y == ey else self.cols
 
-                is_selected = False
-                if self.selection_start and self.selection_end:
-                    (sx, sy) = self.selection_start
-                    (ex, ey) = self.selection_end
-                    min_y, max_y = min(sy, ey), max(sy, ey)
+            # 提取本行文本
+            line = "".join(
+                line_dict.get(col).data if line_dict.get(col) else ' '
+                for col in range(start_col, end_col)
+            )
 
-                    if min_y <= abs_y <= max_y:
-                        if (abs_y == min_y and x >= (min(sx, ex) if min_y == max_y else sx)) or \
-                           (abs_y == max_y and x <= (max(sx, ex) if min_y == max_y else ex)) or \
-                           (min_y < abs_y < max_y):
-                            is_selected = True
+            text.append(line.rstrip())  # 去掉末尾空格
 
-                if char is None:
-                    if is_selected:
-                        char = PlaceholderChar()
-                    else:
-                        continue
+        return "\n".join(text).strip()
 
-                fg_color = self.get_color(char.fg, char.bold, bg=False)
-                bg_color = self.get_color(
-                    char.bg, bg=True) if char.bg != 'default' else QColor(Qt.transparent)
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        """右键菜单处理（修复：正确判断是否有选中文本）"""
+        menu = RoundMenu(parent=self)
 
-                if char.reverse:
-                    fg_color, bg_color = bg_color, fg_color
+        # 获取当前选中文本
+        selected_text = self.get_selected_text()
 
-                pos_x = x * self.char_w
-                pos_y = screen_y * self.char_h
+        copy_action = Action("复制", self)
+        copy_action.triggered.connect(self.copy_selection)
+        menu.addAction(copy_action)
 
-                final_bg_color = QColor(
-                    65, 131, 196) if is_selected else bg_color
-                painter.fillRect(pos_x, pos_y, self.char_w,
-                                 self.char_h, final_bg_color)
+        # 只有有选中文本时才启用复制
+        if not selected_text:
+            copy_action.setEnabled(False)
 
-                final_fg_color = Qt.white if is_selected else fg_color
-                painter.setPen(final_fg_color)
+        paste_action = Action("粘贴", self)
+        paste_action.triggered.connect(self.paste_from_clipboard)
+        menu.addAction(paste_action)
 
-                if char.data:
-                    painter.drawText(
-                        pos_x, pos_y + self.metrics.ascent(), char.data)
+        # 显示菜单
+        menu.exec_(event.globalPos())
 
-        max_scroll_offset = max(0, self._get_max_buffer_rows() - self.rows)
-        if self.scroll_offset == max_scroll_offset:
-            cx, cy = self.screen.cursor.x, self.screen.cursor.y
+    def copy_selection(self):
+        """复制选中文本到剪贴板"""
+        selected_text = self.get_selected_text()
+        if selected_text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(selected_text)
+            print(f"DEBUG: Copied {len(selected_text)} chars to clipboard")
 
-            if 0 <= cx < self.cols and 0 <= cy < self.rows:
-                painter.fillRect(cx * self.char_w, cy * self.char_h,
-                                 self.char_w, self.char_h, QColor(255, 255, 255, 120))
-
-    def resizeEvent(self, event):
-        """自动适应窗口大小"""
-        super().resizeEvent(event)
-
-        new_width = self.width()
-        new_height = self.height()
-
-        new_cols = max(20, new_width // self.char_w) if self.char_w > 0 else 80
-        new_rows = max(5, new_height // self.char_h) if self.char_h > 0 else 24
-
-        if new_cols != self.cols or new_rows != self.rows:
-            old_cols, old_rows = self.cols, self.rows
-
-            print(f"DEBUG [RESIZE]: Widget Size: {new_width}x{new_height}px")
-            print(f"DEBUG [RESIZE]: Old Terminal Size: {old_cols}x{old_rows}")
-            print(
-                f"DEBUG [RESIZE]: New Terminal Size: {new_cols}x{new_rows}")
-            print(f"DEBUG [RESIZE]: Char Size: {self.char_w}x{self.char_h}px")
-
-            self.cols = new_cols
-            self.rows = new_rows
-
-            self.screen.lines = self.rows
-            self.screen.columns = self.cols
-
-            if self.ssh and self.ssh.channel:
-                try:
-                    self.ssh.channel.resize_pty(
-                        width=self.cols, height=self.rows)
-                    print(
-                        f"DEBUG [RESIZE]: SSH PTY resized to {self.cols}x{self.rows}")
-                except Exception as e:
-                    print(f"DEBUG [RESIZE]: Failed to resize SSH PTY: {e}")
-
-            self.update()
+    def paste_from_clipboard(self):
+        """从剪贴板粘贴文本到终端"""
+        if not self.ssh or not self.ssh.channel:
+            return
+        clipboard = QApplication.clipboard()
+        text = clipboard.text()
+        if text:
+            self.ssh.send(text.encode('utf-8'))
+            print(f"DEBUG: Pasted {len(text)} chars to terminal")
 
     def keyPressEvent(self, event: QKeyEvent):
-        """键盘事件处理"""
+        """键盘事件处理（新增：Ctrl+Shift+C/V 支持）"""
         key = event.key()
         text = event.text()
+        modifiers = event.modifiers()
+
+        # 处理 Ctrl+Shift+C（复制）
+        if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
+            if key == Qt.Key_C:
+                self.copy_selection()
+                return
+            # 处理 Ctrl+Shift+V（粘贴）
+            elif key == Qt.Key_V:
+                self.paste_from_clipboard()
+                return
 
         mapping = {
             Qt.Key_Return: '\r', Qt.Key_Enter: '\r',
@@ -488,7 +429,7 @@ class TerminalScreen(QWidget):
 
         data_to_send = None
 
-        if event.modifiers() & Qt.ControlModifier:
+        if modifiers & Qt.ControlModifier:
             if Qt.Key_A <= key <= Qt.Key_Z:
                 code = key - Qt.Key_A + 1
                 data_to_send = chr(code)
@@ -600,3 +541,145 @@ class TerminalScreen(QWidget):
 
         results_xml += "\n</results>"
         return results_xml
+
+    def paintEvent(self, event):
+        """绘制终端内容"""
+        painter = QPainter(self)
+        painter.setFont(self.font)
+
+        # 获取绘制范围
+        history_len = len(self.screen.history.top)
+        max_rows = history_len + self.rows
+
+        # 绘制每一行
+        for row in range(self.rows):
+            abs_y = self.scroll_offset + row
+            if abs_y >= max_rows:
+                break
+
+            y_pos = row * self.char_h
+
+            # 从历史缓冲区或当前屏幕获取行
+            if abs_y < history_len:
+                try:
+                    line_dict = self.screen.history.top[abs_y]
+                except IndexError:
+                    continue
+            elif history_len <= abs_y < max_rows:
+                buffer_y = abs_y - history_len
+                line_dict = self.screen.buffer.get(buffer_y, {})
+            else:
+                continue
+
+            if not line_dict:
+                continue
+
+            # 绘制行中的每个字符
+            for col in range(self.cols):
+                char_obj = line_dict.get(col)
+                if not char_obj:
+                    continue
+
+                x_pos = col * self.char_w
+
+                # 获取字符属性
+                data = char_obj.data
+                fg = self.get_color(char_obj.fg, char_obj.bold)
+                bg = self.get_color(char_obj.bg, bg=True)
+                bold = char_obj.bold
+                reverse = char_obj.reverse
+
+                # 反转模式：交换前景色和背景色
+                if reverse:
+                    fg, bg = bg, fg
+
+                # 绘制背景
+                if bg != QColor(Qt.transparent):
+                    painter.fillRect(
+                        x_pos, y_pos, self.char_w, self.char_h, bg)
+
+                # 绘制字符
+                if data and data != ' ':
+                    if bold:
+                        bold_font = QFont(self.font)
+                        bold_font.setBold(True)
+                        painter.setFont(bold_font)
+                    else:
+                        painter.setFont(self.font)
+
+                    painter.setPen(fg)
+                    painter.drawText(x_pos, y_pos, self.char_w, self.char_h,
+                                     Qt.AlignLeft | Qt.AlignTop, data)
+
+            # 绘制选中区域的背景高亮
+            if self.selection_start and self.selection_end:
+                self._draw_selection(painter, abs_y, row, y_pos)
+
+    def _draw_selection(self, painter: QPainter, abs_y: int, row: int, y_pos: int):
+        """绘制选中区域的高亮背景"""
+        (sx, sy) = self.selection_start
+        (ex, ey) = self.selection_end
+
+        # 归一化选择范围
+        if (sy > ey) or (sy == ey and sx > ex):
+            sx, sy, ex, ey = ex, ey, sx, sy
+
+        # 判断当前行是否在选择范围内
+        if abs_y < sy or abs_y > ey:
+            return
+
+        # 计算本行的起止列
+        start_col = sx if abs_y == sy else 0
+        end_col = (ex + 1) if abs_y == ey else self.cols
+
+        # 绘制高亮背景
+        highlight_color = QColor("#2979F2")
+        highlight_color.setAlpha(100)
+        painter.fillRect(
+            start_col * self.char_w, y_pos,
+            (end_col - start_col) * self.char_w, self.char_h,
+            highlight_color
+        )
+
+    def resizeEvent(self, event):
+        """窗口大小改变事件处理"""
+        super().resizeEvent(event)
+
+        # 计算新的行列数
+        new_cols = max(20, self.width() // self.char_w)
+        new_rows = max(5, self.height() // self.char_h)
+
+        # 只有当行列数实际改变时才更新
+        if new_cols != self.cols or new_rows != self.rows:
+            old_cols = self.cols
+            old_rows = self.rows
+
+            self.cols = new_cols
+            self.rows = new_rows
+
+            # 仅调整屏幕大小，不重置内容
+            try:
+                # 保存当前缓冲区内容
+                old_buffer = dict(self.screen.buffer)
+
+                # 调用 resize 但不清空数据
+                self.screen.resize(self.rows, self.cols)
+
+                # 恢复缓冲区内容（如果 resize 导致清空）
+                if old_buffer and not self.screen.buffer:
+                    self.screen.buffer = old_buffer
+
+            except Exception as e:
+                print(f"DEBUG: resizeEvent error: {e}")
+
+            # 重置滚动偏移到最底部
+            max_rows = self._get_max_buffer_rows()
+            self.scroll_offset = max(0, max_rows - self.rows)
+
+        self.update()
+
+    def cleanup(self):
+        """清理资源，停止 SSH 线程"""
+        if self.ssh:
+            self.ssh.stop()
+            self.ssh = None

@@ -459,6 +459,7 @@ class SSHWorker(QThread):
         except Exception:
             pass
         self.disconnect_all_signals()
+        self.monitor.stop_poller()
         # try:
         #     signals = [
         #         'result_ready', 'connected', 'error_occurred', 'sys_resource', 'file_tree_updated', 'stop_timer_sig'
