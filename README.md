@@ -1,3 +1,5 @@
+## 本仓库由于学业问题,重构计划暂且搁置,无期限停止非BUG更新,希望下次更新会到来
+
 ## [English Documentation](README_en.md)
 
 # 欢迎加入QQ讨论群: 135106330 备注: NeoSSH
