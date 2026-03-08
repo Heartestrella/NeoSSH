@@ -11,3 +11,4 @@ build/
 dist/
 qfluentwidgets_config.json
 QQBot/
+/*.lnk
