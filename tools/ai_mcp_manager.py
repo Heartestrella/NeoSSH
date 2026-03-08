@@ -2,6 +2,7 @@ import json
 import re
 import inspect
 import html
+import ast
 from typing import Optional, Dict, Any, Callable
 
 class AIMCPManager:
@@ -35,7 +36,9 @@ class AIMCPManager:
                 properties[param.name] = {
                     "type": param_type,
                 }
-                if param.default != None:
+                if param.default is inspect._empty:
+                    required.append(param.name)
+                else:
                     properties[param.name]["default"] = param.default
         return {
             "type": "object",
@@ -87,15 +90,28 @@ class AIMCPManager:
         try:
             sig = inspect.signature(handler)
             handler_params = sig.parameters
-            try:
-                while not isinstance(arguments, dict):
-                    arguments = json.loads(arguments)
-            except json.JSONDecodeError:
-                arguments = { "args": arguments }
-
+            parsed_arguments = arguments
+            if isinstance(parsed_arguments, str):
+                raw_text = parsed_arguments.strip()
+                try:
+                    parsed_arguments = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    try:
+                        parsed_arguments = ast.literal_eval(raw_text)
+                    except Exception:
+                        parsed_arguments = {"args": parsed_arguments}
+            if parsed_arguments is None:
+                parsed_arguments = {}
+            if not isinstance(parsed_arguments, dict):
+                parsed_arguments = {"args": parsed_arguments}
+            arguments = parsed_arguments
+            if 'args' in arguments and 'args' not in handler_params:
+                non_request_params = [p for p in handler_params.values() if p.name != 'request_id']
+                if len(non_request_params) == 1:
+                    only_param_name = non_request_params[0].name
+                    arguments = {only_param_name: arguments['args']}
             if 'request_id' in handler_params and request_id:
                 arguments['request_id'] = request_id
-            
             bound_args = sig.bind(**arguments)
             return handler(*bound_args.args, **bound_args.kwargs)
         except Exception as e:
