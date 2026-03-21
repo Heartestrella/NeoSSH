@@ -1,4 +1,4 @@
-## 本仓库由于学业问题,重构计划暂且搁置,无期限停止非BUG更新,希望下次更新会到来
+## 本仓库由于性能问题已废弃 请追踪到最新的Winui3版本
 
 ## [English Documentation](README_en.md)
 
