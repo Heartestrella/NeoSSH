@@ -1,0 +1,67 @@
+name: Delete All Artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Delete all artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete all artifacts
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            core.info(`Repository: ${owner}/${repo}`);
+
+            let deleted = 0;
+
+            while (true) {
+              // 每次重新获取第一页。
+              // 删除后，后面的 artifact 会自动补到第一页。
+              const response = await github.rest.actions.listArtifactsForRepo({
+                owner,
+                repo,
+                per_page: 100,
+                page: 1,
+              });
+
+              const artifacts = response.data.artifacts;
+
+              if (!artifacts || artifacts.length === 0) {
+                break;
+              }
+
+              core.info(`Found ${artifacts.length} artifacts in this batch.`);
+
+              for (const artifact of artifacts) {
+                core.info(
+                  `Deleting: ${artifact.name} (#${artifact.id}) ` +
+                  `${(artifact.size_in_bytes / 1024 / 1024).toFixed(2)} MB`
+                );
+
+                await github.rest.actions.deleteArtifact({
+                  owner,
+                  repo,
+                  artifact_id: artifact.id,
+                });
+
+                deleted++;
+              }
+
+              core.info(`Deleted ${deleted} artifacts so far...`);
+            }
+
+            core.info(`================================`);
+            core.info(`Cleanup completed.`);
+            core.info(`Deleted: ${deleted} artifacts`);
+            core.info(`================================`);
